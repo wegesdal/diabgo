@@ -132,7 +132,7 @@ func run() {
 		if ticks > 0.1 {
 			currentFrame++
 
-			if len(player.path) > 1 {
+			if len(player.path) > 0 {
 
 				player.direction.e = player.x - player.path[len(player.path)-1].x
 				player.direction.n = player.y - player.path[len(player.path)-1].y
@@ -152,7 +152,7 @@ func run() {
 		cam := pixel.IM.Scaled(camPos, camZoom).Moved(win.Bounds().Center().Sub(camPos))
 		win.SetMatrix(cam)
 
-		if win.JustPressed(pixelgl.MouseButtonRight) {
+		if win.JustPressed(pixelgl.Key1) {
 			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
 
 			var coordX = int(raw.X + 1)

@@ -27,7 +27,7 @@ func manhattan_distance(a node, b node) int {
 
 func walkable(n node, grid [32][32]uint) bool {
 	if n.x >= 0 && n.y >= 0 && n.x < len(grid[0]) && n.y < len(grid) {
-		return grid[n.y][n.x] == 0
+		return grid[n.x][n.y] == 0
 	} else {
 		return false
 	}

@@ -124,7 +124,7 @@ func run() {
 
 		ticks += dt
 
-		if ticks > 0.3 {
+		if ticks > 0.2 {
 			currentFrame++
 			updatePlayer(playerBatch, currentFrame%4, SE)
 			ticks = 0
@@ -150,6 +150,17 @@ func run() {
 
 			}
 			updateMap(mapBatch)
+		}
+
+		if win.JustPressed(pixelgl.MouseButtonRight) {
+			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
+
+			var coordX = int(raw.X + 1)
+			var coordY = int(raw.Y + 1)
+
+			if coordX < len(levelData) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
+				fmt.Print(a_star(node{x: 0, y: 0}, node{x: coordX, y: coordY}, levelData))
+			}
 		}
 
 		if win.Pressed(pixelgl.KeyLeft) {

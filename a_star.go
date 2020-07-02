@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -26,7 +25,7 @@ func manhattan_distance(a node, b node) int {
 	return int(math.Abs(float64(a.x-b.x)) + math.Abs(float64(a.y-b.y)))
 }
 
-func walkable(n node, grid [][]uint) bool {
+func walkable(n node, grid [32][32]uint) bool {
 	if n.x >= 0 && n.y >= 0 && n.x < len(grid[0]) && n.y < len(grid) {
 		return grid[n.y][n.x] == 0
 	} else {
@@ -72,7 +71,7 @@ func remove(s []*node, i int) []*node {
 	return s[:len(s)-1]
 }
 
-func astar(start *node, end *node, grid [][]uint) []*node {
+func Astar(start *node, end *node, grid [32][32]uint) []*node {
 	var open = []*node{}
 	var closed = []*node{}
 	open = append(open, start)
@@ -88,7 +87,7 @@ func astar(start *node, end *node, grid [][]uint) []*node {
 
 		var neighbors = []*node{
 			&node{x: open[c].x + 1, y: open[c].y},
-			&node{x: open[c].x - 1, y: open[c].y + 1},
+			&node{x: open[c].x - 1, y: open[c].y},
 			&node{x: open[c].x, y: open[c].y + 1},
 			&node{x: open[c].x, y: open[c].y - 1},
 		}
@@ -114,28 +113,4 @@ func astar(start *node, end *node, grid [][]uint) []*node {
 		}
 	}
 	return open
-}
-
-func main() {
-	var grid = [][]uint{
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	}
-
-	var test_a = node{x: 0, y: 0}
-	var test_b = node{x: 7, y: 0}
-
-	path := astar(&test_a, &test_b, grid)
-
-	for _, n := range path {
-		fmt.Println(n.x, n.y)
-	}
 }

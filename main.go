@@ -13,6 +13,19 @@ import (
 	_ "image/png"
 )
 
+type cardinal struct {
+	n int
+	e int
+}
+
+type actor struct {
+	x         int
+	y         int
+	frames    []*pixel.Sprite
+	path      []*node
+	direction cardinal
+}
+
 const (
 	windowWidth  = 800
 	windowHeight = 600
@@ -22,12 +35,11 @@ const (
 	w        = 1 // wall identifier
 )
 
-var levelData = [32][32]uint8{}
+var levelData = [32][32]uint{}
 
 var win *pixelgl.Window
 var floorTile, wallTile *pixel.Sprite
 var tiles []*pixel.Sprite
-var playerFrames []*pixel.Sprite
 
 var (
 	camPos       = pixel.ZV
@@ -56,12 +68,14 @@ func run() {
 	cfg := pixelgl.WindowConfig{
 		Title:  "Diabgo",
 		Bounds: pixel.R(0, 0, windowWidth, windowHeight),
-		VSync:  true,
+		VSync:  false,
 	}
 	win, err = pixelgl.NewWindow(cfg)
 	if err != nil {
 		panic(err)
 	}
+
+	// MAP
 
 	pic, err := loadPicture("dawncastle.png")
 	if err != nil {
@@ -73,29 +87,28 @@ func run() {
 	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
 	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 448, tileSize, 512)))
 
-	// load in player sprites
+	// PLAYER
 
+	// load in player sprites
 	playerSprites, err := loadPicture("CitizenSheet.png")
 	if err != nil {
 		panic(err)
 	}
-
 	playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
-
 	// wizard
-	//playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(0, 0, 24, 48)))
+	var player = actor{x: 0, y: 0}
 
 	// walking down
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*4, 52*3, 22*5, 52*4)))
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*5, 52*3, 22*6, 52*4)))
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*6, 52*3, 22*7, 52*4)))
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*7, 52*3, 22*8, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*4, 52*3, 22*5, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*5, 52*3, 22*6, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*6, 52*3, 22*7, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*7, 52*3, 22*8, 52*4)))
 
 	// walking up
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*8, 52*3, 22*9, 52*4)))
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*9, 52*3, 22*10, 52*4)))
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*10, 52*3, 22*11, 52*4)))
-	playerFrames = append(playerFrames, pixel.NewSprite(playerSprites, pixel.R(22*11, 52*3, 22*12, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*8, 52*3, 22*9, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*9, 52*3, 22*10, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*10, 52*3, 22*11, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*11, 52*3, 22*12, 52*4)))
 
 	var (
 		frames       = 0
@@ -106,17 +119,9 @@ func run() {
 
 	last := time.Now()
 
-	const (
-		NW = iota - 2
-		SW
-		IDLE
-		SE
-		NE
-	)
-
 	updateMap(mapBatch)
 
-	updatePlayer(playerBatch, 0, SW)
+	updatePlayer(playerBatch, 0, player)
 
 	for !win.Closed() {
 
@@ -124,9 +129,21 @@ func run() {
 
 		ticks += dt
 
-		if ticks > 0.2 {
+		if ticks > 0.1 {
 			currentFrame++
-			updatePlayer(playerBatch, currentFrame%4, SE)
+
+			if len(player.path) > 1 {
+
+				player.direction.e = player.x - player.path[len(player.path)-1].x
+				player.direction.n = player.y - player.path[len(player.path)-1].y
+
+				player.x = player.path[len(player.path)-1].x
+				player.y = player.path[len(player.path)-1].y
+
+				player.path = player.path[:len(player.path)-1]
+			}
+
+			updatePlayer(playerBatch, currentFrame%4, player)
 			ticks = 0
 		}
 
@@ -135,7 +152,7 @@ func run() {
 		cam := pixel.IM.Scaled(camPos, camZoom).Moved(win.Bounds().Center().Sub(camPos))
 		win.SetMatrix(cam)
 
-		if win.JustPressed(pixelgl.MouseButtonLeft) {
+		if win.JustPressed(pixelgl.MouseButtonRight) {
 			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
 
 			var coordX = int(raw.X + 1)
@@ -152,14 +169,15 @@ func run() {
 			updateMap(mapBatch)
 		}
 
-		if win.JustPressed(pixelgl.MouseButtonRight) {
+		if win.JustPressed(pixelgl.MouseButtonLeft) {
 			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
 
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
 
 			if coordX < len(levelData) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
-				fmt.Print(a_star(node{x: 0, y: 0}, node{x: coordX, y: coordY}, levelData))
+				player.path = Astar(&node{x: player.x, y: player.y}, &node{x: coordX, y: coordY}, levelData)
+				//print(player.path)
 			}
 		}
 
@@ -194,17 +212,21 @@ func run() {
 	}
 }
 
-func updatePlayer(batch *pixel.Batch, frame int, direction int) {
+func updatePlayer(batch *pixel.Batch, frame int, player actor) {
 	batch.Clear()
-	isoCoords := cartesianToIso(pixel.V(float64(0), float64(0)))
-	mat := pixel.IM.Moved(isoCoords)
-
-	if direction < 0 {
-		mat = mat.ScaledXY(pixel.ZV, pixel.V(-1, 1))
+	isoCoords := cartesianToIso(pixel.V(float64(player.x), float64(player.y)))
+	mat := pixel.IM
+	if player.direction.n < 0 || player.direction.e > 0 {
+		mat = mat.ScaledXY(pixel.ZV, pixel.V(float64(player.direction.n+-1*player.direction.e), 1))
+	}
+	startingFrame := 0
+	if player.direction.n+player.direction.e < 0 {
+		startingFrame = 4
 	}
 
-	var startFrame = (direction*direction - 1) * 2
-	playerFrames[frame+startFrame].Draw(batch, mat)
+	mat = mat.Moved(isoCoords)
+
+	player.frames[frame+startingFrame].Draw(batch, mat)
 }
 
 func updateMap(batch *pixel.Batch) {

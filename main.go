@@ -27,6 +27,17 @@ type actor struct {
 	direction cardinal
 }
 
+type vec2 struct {
+	x float64
+	y float64
+}
+
+func lerp(start pixel.Vec, end pixel.Vec, percent float64) pixel.Vec {
+	x := start.X + percent*(end.X-start.X)
+	y := start.Y + percent*(end.Y-start.Y)
+	return (pixel.Vec{X: x, Y: y})
+}
+
 const (
 	windowWidth  = 800
 	windowHeight = 600
@@ -187,18 +198,22 @@ func run() {
 			}
 		}
 
-		if win.Pressed(pixelgl.KeyLeft) {
-			camPos.X -= camSpeed * dt
-		}
-		if win.Pressed(pixelgl.KeyRight) {
-			camPos.X += camSpeed * dt
-		}
-		if win.Pressed(pixelgl.KeyDown) {
-			camPos.Y -= camSpeed * dt
-		}
-		if win.Pressed(pixelgl.KeyUp) {
-			camPos.Y += camSpeed * dt
-		}
+		camPos = lerp(camPos, cartesianToIso(pixel.Vec{X: float64(player.x), Y: float64(player.y)}), dt)
+
+		// manual camera
+
+		// if win.Pressed(pixelgl.KeyLeft) {
+		// 	camPos.X -= camSpeed * dt
+		// }
+		// if win.Pressed(pixelgl.KeyRight) {
+		// 	camPos.X += camSpeed * dt
+		// }
+		// if win.Pressed(pixelgl.KeyDown) {
+		// 	camPos.Y -= camSpeed * dt
+		// }
+		// if win.Pressed(pixelgl.KeyUp) {
+		// 	camPos.Y += camSpeed * dt
+		// }
 
 		// camZoom *= math.Pow(camZoomSpeed, win.MouseScroll().Y)
 

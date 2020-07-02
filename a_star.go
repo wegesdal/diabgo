@@ -16,11 +16,6 @@ type node struct {
 	G      int
 }
 
-type vec2 struct {
-	x int
-	y int
-}
-
 func manhattan_distance(a node, b node) int {
 	return int(math.Abs(float64(a.x-b.x)) + math.Abs(float64(a.y-b.y)))
 }

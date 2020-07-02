@@ -22,6 +22,7 @@ type actor struct {
 	x         int
 	y         int
 	frames    []*pixel.Sprite
+	frame     int
 	path      []*node
 	direction cardinal
 }
@@ -84,44 +85,47 @@ func run() {
 
 	mapBatch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
 
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 448, tileSize, 512)))
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 64, tileSize, 128)))
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
 
 	// PLAYER
 
 	// load in player sprites
-	playerSprites, err := loadPicture("CitizenSheet.png")
-	if err != nil {
-		panic(err)
-	}
-	playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
+	// playerSprites, err := loadPicture("dawncastle.png")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
 	// wizard
-	var player = actor{x: 0, y: 0}
+	var player = actor{x: 0, y: 0, frame: 0}
+
+	var min_Y float64 = 52 * 3
+	var max_Y float64 = 52*4 - 10
+	var min_X float64 = 466.0
 
 	// walking down
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*4, 52*3, 22*5, 52*4)))
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*5, 52*3, 22*6, 52*4)))
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*6, 52*3, 22*7, 52*4)))
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*7, 52*3, 22*8, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*0, min_Y, min_X+22*1, max_Y)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*1, min_Y, min_X+22*2, max_Y)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*2, min_Y, min_X+22*3, max_Y)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*3, min_Y, min_X+22*4, max_Y)))
 
 	// walking up
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*8, 52*3, 22*9, 52*4)))
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*9, 52*3, 22*10, 52*4)))
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*10, 52*3, 22*11, 52*4)))
-	player.frames = append(player.frames, pixel.NewSprite(playerSprites, pixel.R(22*11, 52*3, 22*12, 52*4)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*4, min_Y, min_X+22*5, max_Y)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*5, min_Y, min_X+22*6, max_Y)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*6, min_Y, min_X+22*7, max_Y)))
+	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*7, min_Y, min_X+22*8, max_Y)))
 
 	var (
-		frames       = 0
-		ticks        = 0.0
-		currentFrame = 0
-		second       = time.Tick(time.Second)
+		frames = 0
+		ticks  = 0.0
+		second = time.Tick(time.Second)
 	)
 
 	last := time.Now()
 
-	updateMap(mapBatch)
+	updateMap(mapBatch, player)
 
-	updatePlayer(playerBatch, 0, player)
+	//updatePlayer(mapBatch, player)
 
 	for !win.Closed() {
 
@@ -130,7 +134,8 @@ func run() {
 		ticks += dt
 
 		if ticks > 0.1 {
-			currentFrame++
+
+			player.frame = (player.frame + 1) % 4
 
 			if len(player.path) > 0 {
 
@@ -143,7 +148,8 @@ func run() {
 				player.path = player.path[:len(player.path)-1]
 			}
 
-			updatePlayer(playerBatch, currentFrame%4, player)
+			//updatePlayer(mapBatch, player)
+			updateMap(mapBatch, player)
 			ticks = 0
 		}
 
@@ -166,7 +172,7 @@ func run() {
 				}
 
 			}
-			updateMap(mapBatch)
+			updateMap(mapBatch, player)
 		}
 
 		if win.JustPressed(pixelgl.MouseButtonLeft) {
@@ -198,7 +204,7 @@ func run() {
 
 		win.Clear(colornames.Darkmagenta)
 		mapBatch.Draw(win)
-		playerBatch.Draw(win)
+		// playerBatch.Draw(win)
 		win.Update()
 
 		frames++
@@ -212,33 +218,36 @@ func run() {
 	}
 }
 
-func updatePlayer(batch *pixel.Batch, frame int, player actor) {
-	batch.Clear()
-	isoCoords := cartesianToIso(pixel.V(float64(player.x), float64(player.y)))
-	mat := pixel.IM
-	if player.direction.n < 0 || player.direction.e > 0 {
-		mat = mat.ScaledXY(pixel.ZV, pixel.V(float64(player.direction.n+-1*player.direction.e), 1))
-	}
-	startingFrame := 0
-	if player.direction.n+player.direction.e < 0 {
-		startingFrame = 4
-	}
+// TODO: combine the player sprite and map sprite sheet to batch all at once
 
-	mat = mat.Moved(isoCoords)
-
-	player.frames[frame+startingFrame].Draw(batch, mat)
-}
-
-func updateMap(batch *pixel.Batch) {
+func updateMap(batch *pixel.Batch, player actor) {
 
 	batch.Clear()
+
 	for x := len(levelData) - 1; x >= 0; x-- {
 		for y := len(levelData[x]) - 1; y >= 0; y-- {
+
+			pmat := pixel.IM
+			startingFrame := 0
+
 			isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
+
 			mat := pixel.IM.Moved(isoCoords)
-			// Not really needed, just put to show bigger blocks
-			// mat = mat.ScaledXY(win.Bounds().Center(), pixel.V(2, 2))
 			tiles[levelData[x][y]].Draw(batch, mat)
+
+			if x == player.x && y == player.y {
+
+				if player.direction.n < 0 || player.direction.e > 0 {
+					pmat = pmat.ScaledXY(pixel.ZV, pixel.V(float64(player.direction.n+-1*player.direction.e), 1))
+				}
+
+				if player.direction.n+player.direction.e < 0 {
+					startingFrame = 4
+				}
+
+				pmat = pmat.Moved(isoCoords)
+				player.frames[player.frame+startingFrame].Draw(batch, pmat)
+			}
 		}
 	}
 }

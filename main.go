@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"image"
+	"math"
+	"math/rand"
 	"os"
 	"time"
 
 	"github.com/faiface/pixel"
+	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
 	"golang.org/x/image/colornames"
 
@@ -21,15 +24,11 @@ type cardinal struct {
 type actor struct {
 	x         int
 	y         int
+	coord     pixel.Vec
 	frames    []*pixel.Sprite
 	frame     int
 	path      []*node
 	direction cardinal
-}
-
-type vec2 struct {
-	x float64
-	y float64
 }
 
 func lerp(start pixel.Vec, end pixel.Vec, percent float64) pixel.Vec {
@@ -49,9 +48,14 @@ const (
 
 var levelData = [32][32]uint{}
 
+var doodadData = [32][32]uint{}
+
 var win *pixelgl.Window
 var floorTile, wallTile *pixel.Sprite
 var tiles []*pixel.Sprite
+var doodads []*pixel.Sprite
+
+var actors []*actor
 
 var (
 	camPos       = pixel.ZV
@@ -73,6 +77,18 @@ func loadPicture(path string) (pixel.Picture, error) {
 	return pixel.PictureDataFromImage(img), nil
 }
 
+func wall_gen(x int, y int) {
+	levelData[x][y] = 4
+	r := rand.Intn(6)
+	if x < 30 && x > 0 && y < 30 && y > 0 {
+		if r < 2 {
+			wall_gen(x+1, y)
+		} else if r < 4 {
+			wall_gen(x, y+1)
+		}
+	}
+}
+
 func run() {
 
 	var err error
@@ -88,7 +104,6 @@ func run() {
 	}
 
 	// MAP
-
 	pic, err := loadPicture("dawncastle.png")
 	if err != nil {
 		panic(err)
@@ -96,11 +111,76 @@ func run() {
 
 	mapBatch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
 
+	// ground
 	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 64, tileSize, 128)))
+
+	// road
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
+
+	// bridge
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(64, 256, tileSize+64, 256-64)))
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 256-64)))
+
+	// block
 	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
 
-	// PLAYER
+	// water
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 256+64)))
 
+	doodads = append(doodads, pixel.NewSprite(pic, pixel.R(0, 640-128, tileSize*2, 640-320)))
+	doodads = append(doodads, pixel.NewSprite(pic, pixel.R(0, 640-128, tileSize*2, 640-320)))
+
+	// beholders
+	for i := 0; i < 8; i++ {
+		doodads = append(doodads, pixel.NewSprite(pic, pixel.R(192, 512-32*float64(i), 192+32, 512-32*(float64(i)+1))))
+	}
+
+	// MAP GENERATION
+
+	// make some random trees
+	for i := 0; i < rand.Intn(60); i++ {
+		doodadData[rand.Intn(31)][rand.Intn(31)] = 1
+	}
+
+	// make some walls
+	for i := 0; i < 10; i++ {
+
+		start_x := rand.Intn(25) + 4
+		start_y := rand.Intn(25) + 4
+		wall_gen(start_x, start_y)
+
+	}
+
+	// generate a path
+	road_start := &node{x: rand.Intn(31), y: 0}
+	road := Astar(road_start, &node{x: rand.Intn(31), y: 31}, levelData)
+
+	// generate a river
+	river_start := &node{x: 0, y: rand.Intn(31)}
+	river := Astar(river_start, &node{x: 31, y: rand.Intn(31)}, levelData)
+
+	// bake the road onto the array
+	for _, node := range road {
+		levelData[node.x][node.y] = 1
+	}
+	// bake the river onto the array
+
+	river = append(river, river_start)
+
+	for _, node := range river {
+		if levelData[node.x][node.y] == 1 || node.x > 0 && levelData[node.x-1][node.y] == 1 {
+			levelData[node.x][node.y-1] = 2
+			levelData[node.x][node.y] = 3
+			levelData[node.x][node.y+1] = 3
+
+		} else {
+			levelData[node.x][node.y] = 5
+			levelData[node.x][node.y+1] = 5
+
+		}
+	}
+
+	// PLAYER
 	// load in player sprites
 	// playerSprites, err := loadPicture("dawncastle.png")
 	// if err != nil {
@@ -108,23 +188,32 @@ func run() {
 	// }
 	// playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
 	// wizard
+
 	var player = actor{x: 0, y: 0, frame: 0}
+	var creep = actor{x: 0, y: 0, frame: 0}
 
 	var min_Y float64 = 52 * 3
 	var max_Y float64 = 52*4 - 10
 	var min_X float64 = 466.0
 
-	// walking down
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*0, min_Y, min_X+22*1, max_Y)))
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*1, min_Y, min_X+22*2, max_Y)))
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*2, min_Y, min_X+22*3, max_Y)))
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*3, min_Y, min_X+22*4, max_Y)))
+	// PLAYER ANIMATION FRAMES
+	for i := 0; i < 8; i++ {
+		player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*float64(i), min_Y, min_X+22*float64(i+1), max_Y)))
+	}
 
-	// walking up
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*4, min_Y, min_X+22*5, max_Y)))
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*5, min_Y, min_X+22*6, max_Y)))
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*6, min_Y, min_X+22*7, max_Y)))
-	player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*7, min_Y, min_X+22*8, max_Y)))
+	min_X = 466.0 - 22
+	min_Y = 0
+	max_Y = 0 + 42
+
+	// CREEP ANIMATION FRAMES
+	for i := 0; i < 8; i++ {
+		creep.frames = append(creep.frames, pixel.NewSprite(pic, pixel.R(min_X+22*float64(i), min_Y, min_X+22*float64(i+1), max_Y)))
+	}
+
+	actors = append(actors, &player)
+	actors = append(actors, &creep)
+
+	creep.path = Astar(&node{x: creep.x, y: creep.y}, road[0], levelData)
 
 	var (
 		frames = 0
@@ -134,35 +223,42 @@ func run() {
 
 	last := time.Now()
 
-	updateMap(mapBatch, player)
-
-	//updatePlayer(mapBatch, player)
-
 	for !win.Closed() {
 
 		dt := time.Since(last).Seconds()
 
 		ticks += dt
 
+		for _, a := range actors {
+			a.coord = pixel.Lerp(a.coord, cartesianToIso(pixel.Vec{X: float64(a.x), Y: float64(a.y)}), dt*1.5)
+		}
+
 		if ticks > 0.1 {
 
-			player.frame = (player.frame + 1) % 4
+			for _, a := range actors {
+				a.frame = (a.frame + 1) % 4
 
-			if len(player.path) > 0 {
+				if len(a.path) > 0 {
 
-				player.direction.e = player.x - player.path[len(player.path)-1].x
-				player.direction.n = player.y - player.path[len(player.path)-1].y
+					a.x = a.path[len(a.path)-1].x
+					a.y = a.path[len(a.path)-1].y
 
-				player.x = player.path[len(player.path)-1].x
-				player.y = player.path[len(player.path)-1].y
+					i := isoToCartesian(a.coord)
+					if math.Pow(i.X-float64(a.x), 2.0)+math.Pow(i.Y-float64(a.y), 2.0) < 4 {
 
-				player.path = player.path[:len(player.path)-1]
+						a.path = a.path[:len(a.path)-1]
+
+						if len(a.path) > 0 {
+							a.direction.e = a.x - a.path[len(a.path)-1].x
+							a.direction.n = a.y - a.path[len(a.path)-1].y
+						}
+					}
+				}
 			}
 
-			//updatePlayer(mapBatch, player)
-			updateMap(mapBatch, player)
 			ticks = 0
 		}
+		updateMap(mapBatch, actors, dt)
 
 		last = time.Now()
 
@@ -177,13 +273,44 @@ func run() {
 
 			if coordX < len(levelData) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
 				if levelData[coordX][coordY] == 0 {
-					levelData[coordX][coordY] = 1
+					levelData[coordX][coordY] = 4
 				} else {
 					levelData[coordX][coordY] = 0
 				}
 
 			}
-			updateMap(mapBatch, player)
+		}
+
+		if win.JustPressed(pixelgl.Key2) {
+			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
+
+			var coordX = int(raw.X + 1)
+			var coordY = int(raw.Y + 1)
+
+			if coordX < len(doodadData) && coordY < len(doodadData[0]) && coordX >= 0 && coordY >= 0 {
+				if doodadData[coordX][coordY] == 0 {
+					doodadData[coordX][coordY] = 1
+				} else {
+					doodadData[coordX][coordY] = 0
+				}
+
+			}
+		}
+
+		if win.JustPressed(pixelgl.Key3) {
+			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
+
+			var coordX = int(raw.X + 1)
+			var coordY = int(raw.Y + 1)
+
+			if coordX < len(doodadData) && coordY < len(doodadData[0]) && coordX >= 0 && coordY >= 0 {
+				if doodadData[coordX][coordY] == 0 {
+					doodadData[coordX][coordY] = 3
+				} else {
+					doodadData[coordX][coordY] = 0
+				}
+
+			}
 		}
 
 		if win.JustPressed(pixelgl.MouseButtonLeft) {
@@ -198,7 +325,7 @@ func run() {
 			}
 		}
 
-		camPos = lerp(camPos, cartesianToIso(pixel.Vec{X: float64(player.x), Y: float64(player.y)}), dt)
+		camPos = lerp(camPos, player.coord, dt)
 
 		// manual camera
 
@@ -217,8 +344,19 @@ func run() {
 
 		// camZoom *= math.Pow(camZoomSpeed, win.MouseScroll().Y)
 
-		win.Clear(colornames.Darkmagenta)
+		// ... draw the scene using imd
+
+		imd := imdraw.New(nil)
+
+		imd.Color = colornames.Red
+		imd.EndShape = imdraw.RoundEndShape
+		imd.Push(actors[0].coord, actors[1].coord)
+		imd.EndShape = imdraw.SharpEndShape
+		imd.Line(1)
+
+		win.Clear(colornames.Black)
 		mapBatch.Draw(win)
+		imd.Draw(win)
 		// playerBatch.Draw(win)
 		win.Update()
 
@@ -233,9 +371,7 @@ func run() {
 	}
 }
 
-// TODO: combine the player sprite and map sprite sheet to batch all at once
-
-func updateMap(batch *pixel.Batch, player actor) {
+func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 
 	batch.Clear()
 
@@ -249,19 +385,29 @@ func updateMap(batch *pixel.Batch, player actor) {
 
 			mat := pixel.IM.Moved(isoCoords)
 			tiles[levelData[x][y]].Draw(batch, mat)
+			// draw doodads
 
-			if x == player.x && y == player.y {
+			if doodadData[x][y] > 0 {
+				doodads[doodadData[x][y]].Draw(batch, mat)
+			}
 
-				if player.direction.n < 0 || player.direction.e > 0 {
-					pmat = pmat.ScaledXY(pixel.ZV, pixel.V(float64(player.direction.n+-1*player.direction.e), 1))
+			for _, a := range actors {
+				i := isoToCartesian(a.coord)
+
+				// draw actor
+				offset := 0.1
+				if x == int(i.X+offset) && y == int(i.Y+offset) {
+					if a.direction.n < 0 || a.direction.e > 0 {
+						pmat = pmat.ScaledXY(pixel.ZV, pixel.V(float64(a.direction.n+-1*a.direction.e), 1))
+					}
+
+					if a.direction.n+a.direction.e < 0 {
+						startingFrame = 4
+					}
+
+					pmat = pmat.Moved(a.coord)
+					a.frames[a.frame+startingFrame].Draw(batch, pmat)
 				}
-
-				if player.direction.n+player.direction.e < 0 {
-					startingFrame = 4
-				}
-
-				pmat = pmat.Moved(isoCoords)
-				player.frames[player.frame+startingFrame].Draw(batch, pmat)
 			}
 		}
 	}

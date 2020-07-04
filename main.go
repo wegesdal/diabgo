@@ -22,15 +22,22 @@ type cardinal struct {
 }
 
 const (
-	beholder = iota
+	passive = iota
+	pursuit
+	attack
 )
 
-type attack struct {
-	damage  int
-	element int
-	source  *actor
-	target  *actor
-}
+const (
+	friendly = iota
+	neutral
+	hostile
+)
+
+const (
+	none = iota
+	charmed
+	frozen
+)
 
 type actor struct {
 	x         int
@@ -41,6 +48,12 @@ type actor struct {
 	frame     int
 	maxhp     int
 	hp        int
+	state     int
+	faction   int
+	movespeed float64
+	effects   []int
+	prange    float64
+	arange    float64
 	dest      *node
 	direction cardinal
 }
@@ -103,14 +116,14 @@ func wall_gen(x int, y int) {
 	}
 }
 
-func spawn_actor(x int, y int, name string, frames []*pixel.Sprite, dest *node) *actor {
+func spawn_actor(x int, y int, name string, frames []*pixel.Sprite) *actor {
 	var a = actor{x: x, y: y}
 	a.name = name
 	a.frame = 0
 	a.frames = frames
-	a.dest = dest
 	a.maxhp = 40
-	a.hp = 17
+	a.hp = 15
+	a.dest = &node{x: x, y: y}
 	a.coord = cartesianToIso(pixel.V(float64(a.x), float64(a.y)))
 	return &a
 }
@@ -211,7 +224,7 @@ func run() {
 	// playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
 	// wizard
 
-	var player = actor{x: 0, y: 0, frame: 0, dest: &node{x: 0, y: 0}}
+	var player_frames []*pixel.Sprite
 
 	var min_Y float64 = 52 * 3
 	var max_Y float64 = 52*4 - 10
@@ -219,10 +232,11 @@ func run() {
 
 	// PLAYER ANIMATION FRAMES
 	for i := 0; i < 8; i++ {
-		player.frames = append(player.frames, pixel.NewSprite(pic, pixel.R(min_X+22*float64(i), min_Y, min_X+22*float64(i+1), max_Y)))
+		player_frames = append(player_frames, pixel.NewSprite(pic, pixel.R(min_X+22*float64(i), min_Y, min_X+22*float64(i+1), max_Y)))
 	}
 
-	actors = append(actors, &player)
+	var player = spawn_actor(0, 0, "player", player_frames)
+	actors = append(actors, player)
 
 	// CREEP ANIMATION FRAMES
 	min_X = 466.0 - 23
@@ -339,7 +353,8 @@ func run() {
 
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
-			c := spawn_actor(coordX, coordY, "creep", creep_frames, road[0])
+			c := spawn_actor(coordX, coordY, "creep", creep_frames)
+			c.dest = road[0]
 			actors = append(actors, c)
 		}
 

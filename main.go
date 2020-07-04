@@ -320,16 +320,15 @@ func run() {
 					// if one is neutral the product of their states is 0
 					// if they are opposed the product of their states is negative
 
+					// CREEP DISAPPEARS ON OVERLAP WITH PLAYER
+
 					if a != o {
 						if d_square < a.arange && o.faction*a.faction*oc*ac < 0 {
 							a.state = attack
 							a.target = o
-							break
 						} else if d_square < a.prange && o.faction*a.faction*oc*ac < 0 {
-							fmt.Print("pursuit state")
 							a.state = pursuit
 							a.target = o
-							break
 						} else {
 							a.state = passive
 						}
@@ -341,8 +340,16 @@ func run() {
 			for _, a := range actors {
 				a.frame = frame
 				if a.state == passive {
+
+					// follow player if charmed
+					_, acharmed := a.effects["charmed"]
+					if acharmed {
+						a.dest = player.dest
+					}
+
 					path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
 					step_forward(a, path)
+
 				} else if a.state == pursuit {
 					path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData)
 					step_forward(a, path)
@@ -414,7 +421,7 @@ func run() {
 			c := spawn_actor(coordX, coordY, "creep", creep_frames)
 			c.dest = road[0]
 			c.faction = hostile
-			c.prange = 500.0
+			c.prange = 5000.0
 			c.arange = 50.0
 			actors = append(actors, c)
 		}

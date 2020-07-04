@@ -25,18 +25,13 @@ const (
 	passive = iota
 	pursuit
 	attack
+	dead
 )
 
 const (
-	friendly = iota
+	hostile = iota - 1
 	neutral
-	hostile
-)
-
-const (
-	none = iota
-	charmed
-	frozen
+	friendly
 )
 
 type actor struct {
@@ -51,22 +46,22 @@ type actor struct {
 	state     int
 	faction   int
 	movespeed float64
-	effects   []int
+	effects   map[string]struct{}
 	prange    float64
 	arange    float64
 	dest      *node
 	direction cardinal
+	target    *actor
 }
 
-func lerp(start pixel.Vec, end pixel.Vec, percent float64) pixel.Vec {
-	x := start.X + percent*(end.X-start.X)
-	y := start.Y + percent*(end.Y-start.Y)
-	return (pixel.Vec{X: x, Y: y})
-}
+// EFFECTS NOTES: you can get a pseudo set feature with the following:
+// map[string] struct{}
+// value, ok := yourmap[key]
+// struct{}{}
 
 const (
-	windowWidth  = 800
-	windowHeight = 600
+	windowWidth  = 1280
+	windowHeight = 900
 	// sprite tiles are squared, 64x64 size
 	tileSize = 64
 	f        = 0 // floor identifier
@@ -125,7 +120,21 @@ func spawn_actor(x int, y int, name string, frames []*pixel.Sprite) *actor {
 	a.hp = 15
 	a.dest = &node{x: x, y: y}
 	a.coord = cartesianToIso(pixel.V(float64(a.x), float64(a.y)))
+	a.effects = map[string]struct{}{}
 	return &a
+}
+
+func step_forward(a *actor, path []*node) {
+	if len(path) > 0 {
+		i := isoToCartesian(a.coord)
+		// don't update next block until close
+		if math.Pow(i.X-float64(a.x), 2.0)+math.Pow(i.Y-float64(a.y), 2.0) < 1 {
+			a.direction.e = a.x - path[len(path)-1].x
+			a.direction.n = a.y - path[len(path)-1].y
+			a.x = path[len(path)-1].x
+			a.y = path[len(path)-1].y
+		}
+	}
 }
 
 func run() {
@@ -135,7 +144,7 @@ func run() {
 	cfg := pixelgl.WindowConfig{
 		Title:  "Diabgo",
 		Bounds: pixel.R(0, 0, windowWidth, windowHeight),
-		VSync:  false,
+		VSync:  true,
 	}
 	win, err = pixelgl.NewWindow(cfg)
 	if err != nil {
@@ -171,6 +180,7 @@ func run() {
 	doodads = append(doodads, pixel.NewSprite(pic, pixel.R(0, 640-128, tileSize*2, 640-320)))
 
 	// MAP GENERATION
+	// TODO: Break out into its own file
 
 	// make some random trees
 	for i := 0; i < rand.Intn(60); i++ {
@@ -183,7 +193,6 @@ func run() {
 		start_x := rand.Intn(25) + 4
 		start_y := rand.Intn(25) + 4
 		wall_gen(start_x, start_y)
-
 	}
 
 	// generate a path
@@ -236,6 +245,8 @@ func run() {
 	}
 
 	var player = spawn_actor(0, 0, "player", player_frames)
+	player.faction = friendly
+
 	actors = append(actors, player)
 
 	// CREEP ANIMATION FRAMES
@@ -279,32 +290,79 @@ func run() {
 
 			frame = (frame + 1) % 4
 
-			for i, a := range actors {
-				if a.name == "creep" && a.x == a.dest.x && a.y == a.dest.y {
-					//actors[i] = nil
+			// TODO: APPLY STATUS EFFECTS
 
-					actors[i] = actors[len(actors)-1]
-					actors[len(actors)-1] = nil
-					actors = actors[:len(actors)-1]
-
-					break
-				}
-			}
+			// CHECK STATUS AND APPLY STATE
 
 			for _, a := range actors {
 
-				path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
-				a.frame = frame
-				if len(path) > 0 {
+				_, acharmed := a.effects["charmed"]
 
-					i := isoToCartesian(a.coord)
-					// don't update next block until close
-					if math.Pow(i.X-float64(a.x), 2.0)+math.Pow(i.Y-float64(a.y), 2.0) < 1 {
-						a.direction.e = a.x - path[len(path)-1].x
-						a.direction.n = a.y - path[len(path)-1].y
-						a.x = path[len(path)-1].x
-						a.y = path[len(path)-1].y
+				ac := 1
+				if acharmed {
+					ac = -1
+				}
+
+				for _, o := range actors {
+
+					_, ocharmed := o.effects["charmed"]
+					oc := 1
+					if ocharmed {
+						oc = -1
 					}
+
+					d := pixel.Vec.Sub(a.coord, o.coord)
+					d_square := d.X*d.X + d.Y*d.Y
+
+					// friendly is positive, enemy is negative, neutral is 0
+					// if both are friendly the product of their states is positive
+					// if both are hostile the product of their states is positive
+					// if one is neutral the product of their states is 0
+					// if they are opposed the product of their states is negative
+
+					if a != o {
+						if d_square < a.arange && o.faction*a.faction*oc*ac < 0 {
+							a.state = attack
+							a.target = o
+							break
+						} else if d_square < a.prange && o.faction*a.faction*oc*ac < 0 {
+							fmt.Print("pursuit state")
+							a.state = pursuit
+							a.target = o
+							break
+						} else {
+							a.state = passive
+						}
+					}
+				}
+			}
+
+			// EXECUTE STATE
+			for _, a := range actors {
+				a.frame = frame
+				if a.state == passive {
+					path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
+					step_forward(a, path)
+				} else if a.state == pursuit {
+					path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData)
+					step_forward(a, path)
+				} else if a.state == attack {
+					a.target.hp -= 1
+				}
+			}
+
+			// REMOVE DEAD ACTORS
+			for i, a := range actors {
+				// KILL CREEPS WHO REACH END OF THE ROAD
+				// TODO: ADJUST SCORE
+				if a.name == "creep" && ((a.x == a.dest.x && a.y == a.dest.y) || a.hp < 1) {
+					a.state = dead
+				}
+				if a.state == dead {
+					actors[i] = actors[len(actors)-1]
+					actors[len(actors)-1] = nil
+					actors = actors[:len(actors)-1]
+					break
 				}
 			}
 			ticks = 0
@@ -355,10 +413,24 @@ func run() {
 			var coordY = int(raw.Y + 1)
 			c := spawn_actor(coordX, coordY, "creep", creep_frames)
 			c.dest = road[0]
+			c.faction = hostile
+			c.prange = 500.0
+			c.arange = 50.0
 			actors = append(actors, c)
 		}
 
-		if win.JustPressed(pixelgl.MouseButtonLeft) {
+		if win.JustPressed(pixelgl.Key4) {
+			for _, a := range actors {
+				diff := pixel.Vec.Sub(a.coord, cam.Unproject(win.MousePosition()))
+				clickRadius := 300.0
+				if diff.X*diff.X+diff.Y*diff.Y < clickRadius {
+					a.effects["charmed"] = struct{}{}
+					break
+				}
+			}
+		}
+
+		if win.Pressed(pixelgl.MouseButtonLeft) {
 			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
 
 			var coordX = int(raw.X + 1)
@@ -369,7 +441,7 @@ func run() {
 			}
 		}
 
-		camPos = lerp(camPos, player.coord, dt)
+		camPos = pixel.Lerp(camPos, player.coord, dt)
 
 		// manual camera
 
@@ -392,11 +464,15 @@ func run() {
 
 		imd := imdraw.New(nil)
 
-		for i := 0; i < len(actors)-1; i++ {
-			imd.Color = pixel.RGBA{R: 1, G: 0, B: 0.5, A: 0.5}
-			imd.EndShape = imdraw.SharpEndShape
-			imd.Push(actors[i].coord, actors[i+1].coord)
-			imd.Line(1)
+		for i := 0; i < len(actors); i++ {
+			_, charmed := actors[i].effects["charmed"]
+			if charmed {
+				// if actor.effects
+				imd.Color = pixel.RGBA{R: 1, G: 0, B: 0.5, A: 0.5}
+				imd.EndShape = imdraw.SharpEndShape
+				imd.Push(player.coord, actors[i].coord)
+				imd.Line(1)
+			}
 		}
 
 		for _, a := range actors {
@@ -411,31 +487,32 @@ func run() {
 
 			//percentageHealth := float64(a.hp) / float64(a.maxhp)
 			imd.Color = colornames.Lightgreen
-			for i := 0; i < bars; i++ {
+			if a.hp > 0 {
+				for i := 0; i < bars; i++ {
 
-				if i*10 < a.hp && (i+1)*10 >= a.hp {
-					fractionOfBar := float64((a.hp % 10)) / 10.0
-					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
-					f := fractionOfBar * bar_length
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 26.0})
-					imd.Color = colornames.Darkgreen
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
-					imd.Line(2)
+					if i*10 < a.hp && (i+1)*10 >= a.hp {
+						fractionOfBar := float64((a.hp % 10)) / 10.0
+						imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
+						f := fractionOfBar * bar_length
+						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 26.0})
+						imd.Color = colornames.Darkgreen
+						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
+						imd.Line(2)
 
-				} else {
-					// draw the whole bar
-					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
-					imd.Line(2)
+					} else {
+						// draw the whole bar
+						imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
+						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
+						imd.Line(2)
 
-					// draw half the bar
+						// draw half the bar
 
-					// change color
+						// change color
 
-					// draw the rest of the bar
+						// draw the rest of the bar
+					}
 				}
 			}
-
 		}
 
 		win.Clear(colornames.Black)

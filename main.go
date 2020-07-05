@@ -24,9 +24,9 @@ type cardinal struct {
 const (
 	walk = iota
 	attack
+	dead
 	idle
 	cast
-	dead
 )
 
 const (
@@ -41,7 +41,6 @@ type actor struct {
 	name      string
 	coord     pixel.Vec
 	frames    []*pixel.Sprite
-	frame     int
 	maxhp     int
 	hp        int
 	state     int
@@ -66,16 +65,12 @@ const (
 	windowHeight = 900
 	// sprite tiles are squared, 64x64 size
 	tileSize = 64
-	f        = 0 // floor identifier
-	w        = 1 // wall identifier
 )
 
 var levelData = [32][32]uint{}
-
 var doodadData = [32][32]uint{}
 
 var win *pixelgl.Window
-var floorTile, wallTile *pixel.Sprite
 var tiles []*pixel.Sprite
 var doodads []*pixel.Sprite
 
@@ -86,6 +81,7 @@ var (
 	camSpeed     = 500.0
 	camZoom      = 1.0
 	camZoomSpeed = 1.2
+	frame        = 0
 )
 
 func loadPicture(path string) (pixel.Picture, error) {
@@ -116,7 +112,6 @@ func wall_gen(x int, y int) {
 func spawn_actor(x int, y int, name string, anims map[int][]*pixel.Sprite) *actor {
 	var a = actor{x: x, y: y}
 	a.name = name
-	a.frame = 0
 	a.anims = anims
 	a.maxhp = 40
 	a.hp = 15
@@ -124,6 +119,7 @@ func spawn_actor(x int, y int, name string, anims map[int][]*pixel.Sprite) *acto
 	a.coord = cartesianToIso(pixel.V(float64(a.x), float64(a.y)))
 	a.effects = map[string]struct{}{}
 	a.state = idle
+	a.target = &a
 	return &a
 }
 
@@ -145,9 +141,11 @@ func run() {
 	var err error
 
 	cfg := pixelgl.WindowConfig{
-		Title:  "Diabgo",
-		Bounds: pixel.R(0, 0, windowWidth, windowHeight),
-		VSync:  true,
+		Title:                  "Diabgo",
+		Bounds:                 pixel.R(0, 0, windowWidth, windowHeight),
+		VSync:                  true,
+		TransparentFramebuffer: true,
+		Undecorated:            true,
 	}
 	win, err = pixelgl.NewWindow(cfg)
 	if err != nil {
@@ -211,7 +209,6 @@ func run() {
 		levelData[node.x][node.y] = 1
 	}
 	// bake the river onto the array
-
 	river = append(river, river_start)
 
 	for _, node := range river {
@@ -229,12 +226,6 @@ func run() {
 
 	// PLAYER
 	// load in player sprites
-	// playerSprites, err := loadPicture("dawncastle.png")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
-	// wizard
 
 	var player_anim = make(map[int][]*pixel.Sprite)
 
@@ -242,7 +233,7 @@ func run() {
 	var min_Y float64 = 512 - 192
 
 	// PLAYER ANIMATION FRAMES
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 28; i++ {
 		if i < 8 {
 			player_anim[walk] = append(player_anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
 		} else if i < 16 {
@@ -257,7 +248,11 @@ func run() {
 	}
 
 	var player = spawn_actor(0, 0, "player", player_anim)
+	player.maxhp = 80
+	player.hp = 80
 	player.faction = friendly
+	player.prange = 8000.0
+	player.arange = 2000.0
 
 	actors = append(actors, player)
 
@@ -266,18 +261,19 @@ func run() {
 
 	var creep_anim = make(map[int][]*pixel.Sprite)
 
-	for i := 0; i < 16; i++ {
+	// PLAYER ANIMATION FRAMES
+	for i := 0; i < 28; i++ {
 		if i < 8 {
 			creep_anim[walk] = append(creep_anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
 		} else if i < 16 {
 			creep_anim[attack] = append(creep_anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 18 {
+			creep_anim[dead] = append(creep_anim[dead], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 20 {
+			creep_anim[idle] = append(creep_anim[idle], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 28 {
+			creep_anim[cast] = append(creep_anim[cast], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
 		}
-	}
-
-	// TOWERS
-	var orb_sprites []*pixel.Sprite
-	for i := 0; i < 8; i++ {
-		orb_sprites = append(orb_sprites, pixel.NewSprite(pic, pixel.R(192, 512-32*float64(i), 192+32, 512-32*(float64(i)+1))))
 	}
 
 	var (
@@ -287,8 +283,6 @@ func run() {
 	)
 
 	last := time.Now()
-
-	frame := 0
 
 	for !win.Closed() {
 
@@ -305,75 +299,9 @@ func run() {
 			frame = (frame + 1) % 4
 
 			// TODO: APPLY STATUS EFFECTS
-
 			// CHECK STATUS AND APPLY STATE
 
-			for _, a := range actors {
-
-				_, acharmed := a.effects["charmed"]
-
-				ac := 1
-				if acharmed {
-					ac = -1
-				}
-
-				for _, o := range actors {
-
-					_, ocharmed := o.effects["charmed"]
-
-					oc := 1
-					if ocharmed {
-						oc = -1
-						o.hp += 1
-					}
-
-					// friendly is positive, enemy is negative, neutral is 0
-					// if both are friendly the product of their states is positive
-					// if both are hostile the product of their states is positive
-					// if one is neutral the product of their states is 0
-					// if they are opposed the product of their states is negative
-					if a != o && a.state != dead {
-
-						d := pixel.Vec.Sub(a.coord, o.coord)
-						d_square := d.X*d.X + d.Y*d.Y
-
-						if d_square < a.arange && o.faction*a.faction*oc*ac < 0 && o.state != dead {
-							a.state = attack
-							a.target = o
-
-						} else if d_square < a.prange && o.faction*a.faction*oc*ac < 0 && o.state != dead {
-							a.state = walk
-							a.target = o
-
-						} else {
-							//	a.state = passive
-						}
-					}
-				}
-			}
-
-			// EXECUTE STATE
-			for _, a := range actors {
-				a.frame = frame
-				if a.state == idle {
-
-					// this caused a bug where the creep disappeared
-					// follow player if charmed
-					// _, charmed := a.effects["charmed"]
-					// if charmed {
-					// 	a.dest = player.dest
-					// }
-
-					path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
-					step_forward(a, path)
-
-				} else if a.state == walk {
-					path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData)
-					step_forward(a, path)
-				} else if a.state == attack {
-					a.target.hp -= 1
-				}
-			}
+			actorStateMachine(actors)
 
 			// REMOVE DEAD ACTORS
 			for _, a := range actors {
@@ -391,6 +319,7 @@ func run() {
 			}
 			ticks = 0
 		}
+
 		updateMap(mapBatch, actors, dt)
 
 		last = time.Now()
@@ -426,20 +355,18 @@ func run() {
 				} else {
 					doodadData[coordX][coordY] = 0
 				}
-
 			}
 		}
 
 		if win.JustPressed(pixelgl.Key3) {
 			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
-
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
 			c := spawn_actor(coordX, coordY, "creep", creep_anim)
 			c.dest = road[0]
 			c.faction = hostile
-			c.prange = 5000.0
-			c.arange = 50.0
+			c.prange = 8000.0
+			c.arange = 2000.0
 			actors = append(actors, c)
 		}
 
@@ -500,69 +427,9 @@ func run() {
 		}
 
 		// DRAW HEALTH PLATES
+		drawHealthPlates(actors, imd)
 
-		for _, a := range actors {
-			// total length of health plate
-			length := 20.0
-			// number of bars to represent health (10 hp per bar)
-			bars := a.maxhp / 10
-			// length of a single bar
-			bar_length := length / float64(bars)
-			c := 10.0
-			start_X := a.coord.X - c
-
-			//percentageHealth := float64(a.hp) / float64(a.maxhp)
-			if a.faction == friendly {
-				imd.Color = colornames.Lightgreen
-			} else if a.faction == neutral {
-				imd.Color = colornames.Lightyellow
-			} else if a.faction == hostile {
-				imd.Color = colornames.Red
-			}
-			if a.hp > 0 {
-				for i := 0; i < bars; i++ {
-
-					if i*10 < a.hp && (i+1)*10 >= a.hp {
-						fractionOfBar := float64((a.hp % 10)) / 10.0
-						imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
-						f := fractionOfBar * bar_length
-						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 26.0})
-						if a.faction == friendly {
-							imd.Color = colornames.Darkgreen
-						} else if a.faction == neutral {
-							imd.Color = colornames.Darkgoldenrod
-						} else if a.faction == hostile {
-							imd.Color = colornames.Darkred
-						}
-						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
-						imd.Line(2)
-
-					} else {
-						// draw the whole bar
-						imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
-						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
-						imd.Line(2)
-
-						// draw half the bar
-
-						// change color
-
-						// draw the rest of the bar
-					}
-				}
-			}
-
-			// square
-			imd.Color = colornames.Lightpink
-			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-			imd.Polygon(1)
-
-		}
-
-		win.Clear(colornames.Black)
+		win.Clear(pixel.RGBA{R: 0, G: 0, B: 0, A: 0})
 		mapBatch.Draw(win)
 		imd.Draw(win)
 		win.Update()
@@ -585,7 +452,6 @@ func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 	for x := len(levelData) - 1; x >= 0; x-- {
 		for y := len(levelData[x]) - 1; y >= 0; y-- {
 
-			startingFrame := 0
 			isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
 			mat := pixel.IM.Moved(isoCoords)
 			tiles[levelData[x][y]].Draw(batch, mat)
@@ -596,6 +462,8 @@ func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 			}
 
 			for _, a := range actors {
+				startingFrame := 0
+				half_length := len(a.anims[a.state]) / 2
 				pmat := pixel.IM
 				i := isoToCartesian(a.coord)
 				// draw actors
@@ -604,11 +472,14 @@ func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 					if a.direction.n != 0 && a.direction.e == 0 {
 						pmat = pmat.ScaledXY(pixel.ZV, pixel.V(-1, 1))
 					}
-					if a.direction.n+a.direction.e < 0 && len(a.anims[walk]) > 4 {
-						startingFrame = 4
+
+					// if frame is 4 and len anims is 2
+					if a.direction.n+a.direction.e < 0 {
+						startingFrame = half_length
 					}
 					pmat = pmat.Moved(a.coord)
-					a.anims[walk][a.frame+startingFrame].Draw(batch, pmat)
+
+					a.anims[a.state][(frame%half_length+startingFrame)].Draw(batch, pmat)
 				}
 			}
 		}
@@ -627,4 +498,144 @@ func isoToCartesian(pt pixel.Vec) pixel.Vec {
 
 func main() {
 	pixelgl.Run(run)
+}
+
+func actorStateMachine(actors []*actor) {
+
+	for _, a := range actors {
+		for _, o := range actors {
+
+			// _, ocharmed := o.effects["charmed"]
+
+			// oc := 1
+			// if ocharmed {
+			// 	oc = -1
+			// 	o.hp += 1
+			// }
+
+			// friendly is positive, enemy is negative, neutral is 0
+			// if both are friendly the product of their states is positive
+			// if both are hostile the product of their states is positive
+			// if one is neutral the product of their states is 0
+			// if they are opposed the product of their states is negative
+
+			if a != o && a.state != dead && o.state != dead {
+
+				d := pixel.Vec.Sub(a.coord, o.coord)
+				d_square := d.X*d.X + d.Y*d.Y
+
+				if d_square < a.prange && o.faction*a.faction < 0 {
+					a.target = o
+				}
+			}
+		}
+	}
+
+	for _, a := range actors {
+
+		if a.state == idle {
+
+			if a.dest.x != a.x || a.dest.y != a.y || a.target != a {
+				a.state = walk
+			}
+
+		} else if a.state == walk {
+
+			if a.dest.x == a.x && a.dest.y == a.y {
+				a.state = idle
+			}
+			if a.target != a {
+				// if in range, attack
+				d := pixel.Vec.Sub(a.target.coord, a.coord)
+				d_square := d.X*d.X + d.Y*d.Y
+
+				if d_square < a.arange {
+					a.state = attack
+					a.direction.e = a.x - a.target.x
+					a.direction.n = a.y - a.target.y
+				}
+
+				// otherwise move towards target
+				path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData)
+				if len(path) > 0 {
+					if path[len(path)-1].x != a.target.x || path[len(path)-1].y != a.target.y {
+						step_forward(a, path)
+					}
+				}
+
+				// if no target
+			} else {
+				path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
+				step_forward(a, path)
+			}
+
+		} else if a.state == attack {
+			a.target.hp -= 1
+
+			if a.target.hp < 1 {
+				a.state = idle
+				a.target.state = dead
+				a.target = a
+			}
+		}
+	}
+}
+
+func drawHealthPlates(actors []*actor, imd *imdraw.IMDraw) {
+
+	for _, a := range actors {
+		// total length of health plate
+		length := 40.0
+		// number of bars to represent health (10 hp per bar)
+		bars := a.maxhp / 10
+		// length of a single bar
+		bar_length := length / float64(bars)
+		c := 20.0
+		start_X := a.coord.X - c
+
+		//percentageHealth := float64(a.hp) / float64(a.maxhp)
+		if a.faction == friendly {
+			imd.Color = colornames.Lightgreen
+		} else if a.faction == neutral {
+			imd.Color = colornames.Lightyellow
+		} else if a.faction == hostile {
+			imd.Color = colornames.Red
+		}
+		if a.hp > 0 {
+			for i := 0; i < bars; i++ {
+
+				if i*10 < a.hp && (i+1)*10 >= a.hp {
+					fractionOfBar := float64((a.hp % 10)) / 10.0
+					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
+					f := fractionOfBar * bar_length
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 26.0})
+					if a.faction == friendly {
+						imd.Color = colornames.Darkgreen
+					} else if a.faction == neutral {
+						imd.Color = colornames.Darkgoldenrod
+					} else if a.faction == hostile {
+						imd.Color = colornames.Darkred
+					}
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
+					imd.Line(3)
+
+				} else {
+					// draw the whole bar
+					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
+					imd.Line(3)
+				}
+			}
+		}
+
+		// iso square
+		// imd.Color = colornames.Lightpink
+		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+		// imd.Polygon(1)
+
+	}
+
 }

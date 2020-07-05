@@ -22,9 +22,10 @@ type cardinal struct {
 }
 
 const (
-	passive = iota
-	pursuit
+	walk = iota
 	attack
+	idle
+	cast
 	dead
 )
 
@@ -52,6 +53,7 @@ type actor struct {
 	dest      *node
 	direction cardinal
 	target    *actor
+	anims     map[int][]*pixel.Sprite
 }
 
 // EFFECTS NOTES: you can get a pseudo set feature with the following:
@@ -111,16 +113,17 @@ func wall_gen(x int, y int) {
 	}
 }
 
-func spawn_actor(x int, y int, name string, frames []*pixel.Sprite) *actor {
+func spawn_actor(x int, y int, name string, anims map[int][]*pixel.Sprite) *actor {
 	var a = actor{x: x, y: y}
 	a.name = name
 	a.frame = 0
-	a.frames = frames
+	a.anims = anims
 	a.maxhp = 40
 	a.hp = 15
 	a.dest = &node{x: x, y: y}
 	a.coord = cartesianToIso(pixel.V(float64(a.x), float64(a.y)))
 	a.effects = map[string]struct{}{}
+	a.state = idle
 	return &a
 }
 
@@ -173,11 +176,11 @@ func run() {
 	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
 
 	// water
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 256+64)))
+	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0+64, 128, tileSize+64, 192)))
 
 	// the 0th doodad is nil to allow direct grid assignment (empty array is 0)
 	doodads = append(doodads, nil)
-	doodads = append(doodads, pixel.NewSprite(pic, pixel.R(0, 640-128, tileSize*2, 640-320)))
+	doodads = append(doodads, pixel.NewSprite(pic, pixel.R(0+128, 128-64, 128+128, 192+64)))
 
 	// MAP GENERATION
 	// TODO: Break out into its own file
@@ -233,31 +236,42 @@ func run() {
 	// playerBatch := pixel.NewBatch(&pixel.TrianglesData{}, playerSprites)
 	// wizard
 
-	var player_frames []*pixel.Sprite
+	var player_anim = make(map[int][]*pixel.Sprite)
 
-	var min_Y float64 = 52 * 3
-	var max_Y float64 = 52*4 - 10
-	var min_X float64 = 466.0
+	var min_X float64 = 0.0
+	var min_Y float64 = 512 - 192
 
 	// PLAYER ANIMATION FRAMES
-	for i := 0; i < 8; i++ {
-		player_frames = append(player_frames, pixel.NewSprite(pic, pixel.R(min_X+22*float64(i), min_Y, min_X+22*float64(i+1), max_Y)))
+	for i := 0; i < 16; i++ {
+		if i < 8 {
+			player_anim[walk] = append(player_anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 16 {
+			player_anim[attack] = append(player_anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 18 {
+			player_anim[dead] = append(player_anim[dead], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 20 {
+			player_anim[idle] = append(player_anim[idle], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 28 {
+			player_anim[cast] = append(player_anim[cast], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		}
 	}
 
-	var player = spawn_actor(0, 0, "player", player_frames)
+	var player = spawn_actor(0, 0, "player", player_anim)
 	player.faction = friendly
 
 	actors = append(actors, player)
 
 	// CREEP ANIMATION FRAMES
-	min_X = 466.0 - 23
-	min_Y = 0
-	max_Y = 0 + 42
+	min_Y += 64
 
-	var creep_frames []*pixel.Sprite
+	var creep_anim = make(map[int][]*pixel.Sprite)
 
-	for i := 0; i < 8; i++ {
-		creep_frames = append(creep_frames, pixel.NewSprite(pic, pixel.R(min_X+22*float64(i), min_Y, min_X+22*float64(i+1), max_Y)))
+	for i := 0; i < 16; i++ {
+		if i < 8 {
+			creep_anim[walk] = append(creep_anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 16 {
+			creep_anim[attack] = append(creep_anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		}
 	}
 
 	// TOWERS
@@ -306,31 +320,33 @@ func run() {
 				for _, o := range actors {
 
 					_, ocharmed := o.effects["charmed"]
+
 					oc := 1
 					if ocharmed {
 						oc = -1
+						o.hp += 1
 					}
-
-					d := pixel.Vec.Sub(a.coord, o.coord)
-					d_square := d.X*d.X + d.Y*d.Y
 
 					// friendly is positive, enemy is negative, neutral is 0
 					// if both are friendly the product of their states is positive
 					// if both are hostile the product of their states is positive
 					// if one is neutral the product of their states is 0
 					// if they are opposed the product of their states is negative
+					if a != o && a.state != dead {
 
-					// CREEP DISAPPEARS ON OVERLAP WITH PLAYER
+						d := pixel.Vec.Sub(a.coord, o.coord)
+						d_square := d.X*d.X + d.Y*d.Y
 
-					if a != o {
-						if d_square < a.arange && o.faction*a.faction*oc*ac < 0 {
+						if d_square < a.arange && o.faction*a.faction*oc*ac < 0 && o.state != dead {
 							a.state = attack
 							a.target = o
-						} else if d_square < a.prange && o.faction*a.faction*oc*ac < 0 {
-							a.state = pursuit
+
+						} else if d_square < a.prange && o.faction*a.faction*oc*ac < 0 && o.state != dead {
+							a.state = walk
 							a.target = o
+
 						} else {
-							a.state = passive
+							//	a.state = passive
 						}
 					}
 				}
@@ -339,18 +355,19 @@ func run() {
 			// EXECUTE STATE
 			for _, a := range actors {
 				a.frame = frame
-				if a.state == passive {
+				if a.state == idle {
 
+					// this caused a bug where the creep disappeared
 					// follow player if charmed
-					_, acharmed := a.effects["charmed"]
-					if acharmed {
-						a.dest = player.dest
-					}
+					// _, charmed := a.effects["charmed"]
+					// if charmed {
+					// 	a.dest = player.dest
+					// }
 
 					path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
 					step_forward(a, path)
 
-				} else if a.state == pursuit {
+				} else if a.state == walk {
 					path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData)
 					step_forward(a, path)
 				} else if a.state == attack {
@@ -359,18 +376,18 @@ func run() {
 			}
 
 			// REMOVE DEAD ACTORS
-			for i, a := range actors {
+			for _, a := range actors {
 				// KILL CREEPS WHO REACH END OF THE ROAD
 				// TODO: ADJUST SCORE
-				if a.name == "creep" && ((a.x == a.dest.x && a.y == a.dest.y) || a.hp < 1) {
+				if (a.name == "creep" && a.x == a.dest.x && a.y == a.dest.y) || a.hp < 1 {
 					a.state = dead
 				}
-				if a.state == dead {
-					actors[i] = actors[len(actors)-1]
-					actors[len(actors)-1] = nil
-					actors = actors[:len(actors)-1]
-					break
-				}
+				// if a.state == dead {
+				// 	actors[i] = actors[len(actors)-1]
+				// 	actors[len(actors)-1] = nil
+				// 	actors = actors[:len(actors)-1]
+				// 	break
+				// }
 			}
 			ticks = 0
 		}
@@ -418,7 +435,7 @@ func run() {
 
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
-			c := spawn_actor(coordX, coordY, "creep", creep_frames)
+			c := spawn_actor(coordX, coordY, "creep", creep_anim)
 			c.dest = road[0]
 			c.faction = hostile
 			c.prange = 5000.0
@@ -482,6 +499,8 @@ func run() {
 			}
 		}
 
+		// DRAW HEALTH PLATES
+
 		for _, a := range actors {
 			// total length of health plate
 			length := 20.0
@@ -493,7 +512,13 @@ func run() {
 			start_X := a.coord.X - c
 
 			//percentageHealth := float64(a.hp) / float64(a.maxhp)
-			imd.Color = colornames.Lightgreen
+			if a.faction == friendly {
+				imd.Color = colornames.Lightgreen
+			} else if a.faction == neutral {
+				imd.Color = colornames.Lightyellow
+			} else if a.faction == hostile {
+				imd.Color = colornames.Red
+			}
 			if a.hp > 0 {
 				for i := 0; i < bars; i++ {
 
@@ -502,7 +527,13 @@ func run() {
 						imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
 						f := fractionOfBar * bar_length
 						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 26.0})
-						imd.Color = colornames.Darkgreen
+						if a.faction == friendly {
+							imd.Color = colornames.Darkgreen
+						} else if a.faction == neutral {
+							imd.Color = colornames.Darkgoldenrod
+						} else if a.faction == hostile {
+							imd.Color = colornames.Darkred
+						}
 						imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
 						imd.Line(2)
 
@@ -520,6 +551,15 @@ func run() {
 					}
 				}
 			}
+
+			// square
+			imd.Color = colornames.Lightpink
+			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+			imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
+			imd.Polygon(1)
+
 		}
 
 		win.Clear(colornames.Black)
@@ -546,9 +586,7 @@ func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 		for y := len(levelData[x]) - 1; y >= 0; y-- {
 
 			startingFrame := 0
-
 			isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
-
 			mat := pixel.IM.Moved(isoCoords)
 			tiles[levelData[x][y]].Draw(batch, mat)
 
@@ -563,14 +601,14 @@ func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 				// draw actors
 				offset := 0.2
 				if x == int(i.X+offset) && y == int(i.Y+offset) {
-					if a.direction.n < 0 || a.direction.e > 0 {
-						pmat = pmat.ScaledXY(pixel.ZV, pixel.V(float64(a.direction.n+-1*a.direction.e), 1))
+					if a.direction.n != 0 && a.direction.e == 0 {
+						pmat = pmat.ScaledXY(pixel.ZV, pixel.V(-1, 1))
 					}
-					if a.direction.n+a.direction.e < 0 && len(a.frames) > 4 {
+					if a.direction.n+a.direction.e < 0 && len(a.anims[walk]) > 4 {
 						startingFrame = 4
 					}
 					pmat = pmat.Moved(a.coord)
-					a.frames[a.frame+startingFrame].Draw(batch, pmat)
+					a.anims[walk][a.frame+startingFrame].Draw(batch, pmat)
 				}
 			}
 		}

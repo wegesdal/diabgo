@@ -66,6 +66,25 @@ func spawn_actor(x int, y int, name string, anims map[int][]*pixel.Sprite) *acto
 	return &a
 }
 
+func generateActorSprites(pic pixel.Picture, min_Y float64) map[int][]*pixel.Sprite {
+	anim := make(map[int][]*pixel.Sprite)
+	var min_X float64 = 0.0
+	for i := 0; i < 28; i++ {
+		if i < 8 {
+			anim[walk] = append(anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 16 {
+			anim[attack] = append(anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 18 {
+			anim[dead] = append(anim[dead], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 20 {
+			anim[idle] = append(anim[idle], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		} else if i < 28 {
+			anim[cast] = append(anim[cast], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+		}
+	}
+	return anim
+}
+
 func step_forward(a *actor, path []*node) {
 	if len(path) > 0 {
 		i := isoToCartesian(a.coord)
@@ -79,7 +98,7 @@ func step_forward(a *actor, path []*node) {
 	}
 }
 
-func actorStateMachine(actors []*actor) {
+func actorStateMachine(actors []*actor, levelData [2][32][32]uint) {
 
 	for _, a := range actors {
 		for _, o := range actors {
@@ -135,7 +154,7 @@ func actorStateMachine(actors []*actor) {
 				}
 
 				// otherwise move towards target
-				path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData)
+				path := Astar(&node{x: a.x, y: a.y}, &node{x: a.target.x, y: a.target.y}, levelData[0])
 				if len(path) > 0 {
 					if path[len(path)-1].x != a.target.x || path[len(path)-1].y != a.target.y {
 						step_forward(a, path)
@@ -144,7 +163,7 @@ func actorStateMachine(actors []*actor) {
 
 				// if no target
 			} else {
-				path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData)
+				path := Astar(&node{x: a.x, y: a.y}, a.dest, levelData[0])
 				step_forward(a, path)
 			}
 

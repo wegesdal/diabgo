@@ -17,16 +17,10 @@ import (
 const (
 	windowWidth  = 1280
 	windowHeight = 900
-	// sprite tiles are squared, 64x64 size
-	tileSize = 64
+	tileSize     = 64
 )
 
-var levelData = [32][32]uint{}
-var doodadData = [32][32]uint{}
-
 var win *pixelgl.Window
-var tiles []*pixel.Sprite
-var doodads []*pixel.Sprite
 
 var actors []*actor
 
@@ -51,21 +45,38 @@ func loadPicture(path string) (pixel.Picture, error) {
 	return pixel.PictureDataFromImage(img), nil
 }
 
-func wall_gen(x int, y int) {
-	levelData[x][y] = 4
-	r := rand.Intn(6)
-	if x < 30 && x > 0 && y < 30 && y > 0 {
-		if r < 2 {
-			wall_gen(x+1, y)
-		} else if r < 4 {
-			wall_gen(x, y+1)
-		}
-	}
+func generateTiles(pic pixel.Picture) [2][]*pixel.Sprite {
+	var tiles [2][]*pixel.Sprite
+	// ground
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 64, tileSize, 128)))
+
+	// road
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
+
+	// bridge
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(64, 256, 128, 192)))
+
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 192)))
+
+	// block
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
+
+	// water
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(64, 128, 128, 192)))
+
+	// the 0th doodad is nil to allow direct grid assignment (empty array is 0)
+	tiles[1] = append(tiles[1], nil)
+	tiles[1] = append(tiles[1], pixel.NewSprite(pic, pixel.R(128, 64, 256, 256)))
+
+	return tiles
 }
 
 func run() {
 
 	var err error
+
+	endOfTheRoad := &node{x: rand.Intn(31), y: 31}
+	levelData := generateMap(endOfTheRoad)
 
 	cfg := pixelgl.WindowConfig{
 		Title:                  "Diabgo",
@@ -79,100 +90,17 @@ func run() {
 		panic(err)
 	}
 
-	// MAP
+	// SPRITESHEET
 	pic, err := loadPicture("dawncastle.png")
 	if err != nil {
 		panic(err)
 	}
 
-	mapBatch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
+	batch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
+	tiles := generateTiles(pic)
 
-	// ground
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 64, tileSize, 128)))
-
-	// road
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
-
-	// bridge
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(64, 256, tileSize+64, 256-64)))
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 256-64)))
-
-	// block
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
-
-	// water
-	tiles = append(tiles, pixel.NewSprite(pic, pixel.R(0+64, 128, tileSize+64, 192)))
-
-	// the 0th doodad is nil to allow direct grid assignment (empty array is 0)
-	doodads = append(doodads, nil)
-	doodads = append(doodads, pixel.NewSprite(pic, pixel.R(0+128, 128-64, 128+128, 192+64)))
-
-	// MAP GENERATION
-	// TODO: Break out into its own file
-
-	// make some random trees
-	for i := 0; i < rand.Intn(60); i++ {
-		doodadData[rand.Intn(31)][rand.Intn(31)] = 1
-	}
-
-	// make some walls
-	for i := 0; i < 10; i++ {
-
-		start_x := rand.Intn(25) + 4
-		start_y := rand.Intn(25) + 4
-		wall_gen(start_x, start_y)
-	}
-
-	// generate a path
-	road_start := &node{x: rand.Intn(31), y: 0}
-	road := Astar(road_start, &node{x: rand.Intn(31), y: 31}, levelData)
-
-	// generate a river
-	river_start := &node{x: 0, y: rand.Intn(31)}
-	river := Astar(river_start, &node{x: 31, y: rand.Intn(31)}, levelData)
-
-	// bake the road onto the array
-	for _, node := range road {
-		levelData[node.x][node.y] = 1
-	}
-	// bake the river onto the array
-	river = append(river, river_start)
-
-	for _, node := range river {
-		if levelData[node.x][node.y] == 1 {
-			levelData[node.x][node.y-1] = 2
-			levelData[node.x][node.y] = 3
-			levelData[node.x][node.y+1] = 3
-
-		} else {
-			levelData[node.x][node.y] = 5
-			levelData[node.x][node.y+1] = 5
-
-		}
-	}
-
-	// PLAYER
-	// load in player sprites
-
-	var player_anim = make(map[int][]*pixel.Sprite)
-
-	var min_X float64 = 0.0
-	var min_Y float64 = 512 - 192
-
-	// PLAYER ANIMATION FRAMES
-	for i := 0; i < 28; i++ {
-		if i < 8 {
-			player_anim[walk] = append(player_anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 16 {
-			player_anim[attack] = append(player_anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 18 {
-			player_anim[dead] = append(player_anim[dead], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 20 {
-			player_anim[idle] = append(player_anim[idle], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 28 {
-			player_anim[cast] = append(player_anim[cast], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		}
-	}
+	// load player sprites
+	var player_anim = generateActorSprites(pic, 320)
 
 	var player = spawn_actor(0, 0, "player", player_anim)
 	player.maxhp = 80
@@ -183,25 +111,7 @@ func run() {
 
 	actors = append(actors, player)
 
-	// CREEP ANIMATION FRAMES
-	min_Y += 64
-
-	var creep_anim = make(map[int][]*pixel.Sprite)
-
-	// PLAYER ANIMATION FRAMES
-	for i := 0; i < 28; i++ {
-		if i < 8 {
-			creep_anim[walk] = append(creep_anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 16 {
-			creep_anim[attack] = append(creep_anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 18 {
-			creep_anim[dead] = append(creep_anim[dead], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 20 {
-			creep_anim[idle] = append(creep_anim[idle], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 28 {
-			creep_anim[cast] = append(creep_anim[cast], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		}
-	}
+	var creep_anim = generateActorSprites(pic, 384)
 
 	var (
 		frames = 0
@@ -228,7 +138,7 @@ func run() {
 			// TODO: APPLY STATUS EFFECTS
 			// CHECK STATUS AND APPLY STATE
 
-			actorStateMachine(actors)
+			actorStateMachine(actors, levelData)
 
 			// REMOVE DEAD ACTORS
 			for _, a := range actors {
@@ -247,7 +157,7 @@ func run() {
 			ticks = 0
 		}
 
-		updateMap(mapBatch, actors, dt)
+		batchUpdate(batch, actors, dt, levelData, tiles)
 
 		last = time.Now()
 
@@ -260,11 +170,11 @@ func run() {
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
 
-			if coordX < len(levelData) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
-				if levelData[coordX][coordY] == 0 {
-					levelData[coordX][coordY] = 4
+			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
+				if levelData[0][coordX][coordY] == 0 {
+					levelData[0][coordX][coordY] = 4
 				} else {
-					levelData[coordX][coordY] = 0
+					levelData[0][coordX][coordY] = 0
 				}
 
 			}
@@ -276,11 +186,11 @@ func run() {
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
 
-			if coordX < len(doodadData) && coordY < len(doodadData[0]) && coordX >= 0 && coordY >= 0 {
-				if doodadData[coordX][coordY] == 0 {
-					doodadData[coordX][coordY] = 1
+			if coordX < len(levelData[1]) && coordY < len(levelData[1]) && coordX >= 0 && coordY >= 0 {
+				if levelData[1][coordX][coordY] == 0 {
+					levelData[1][coordX][coordY] = 1
 				} else {
-					doodadData[coordX][coordY] = 0
+					levelData[1][coordX][coordY] = 0
 				}
 			}
 		}
@@ -290,7 +200,7 @@ func run() {
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
 			c := spawn_actor(coordX, coordY, "creep", creep_anim)
-			c.dest = road[0]
+			c.dest = endOfTheRoad
 			c.faction = hostile
 			c.prange = 8000.0
 			c.arange = 2000.0
@@ -314,7 +224,7 @@ func run() {
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
 
-			if coordX < len(levelData) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
+			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
 				player.dest = &node{x: coordX, y: coordY}
 			}
 		}
@@ -353,11 +263,10 @@ func run() {
 			}
 		}
 
-		// DRAW HEALTH PLATES
 		drawHealthPlates(actors, imd)
 
 		win.Clear(pixel.RGBA{R: 0, G: 0, B: 0, A: 0})
-		mapBatch.Draw(win)
+		batch.Draw(win)
 		imd.Draw(win)
 		win.Update()
 
@@ -372,21 +281,25 @@ func run() {
 	}
 }
 
-func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
+func batchUpdate(batch *pixel.Batch, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite) {
 
 	batch.Clear()
 
-	for x := len(levelData) - 1; x >= 0; x-- {
-		for y := len(levelData[x]) - 1; y >= 0; y-- {
+	for x := len(levelData[0]) - 1; x >= 0; x-- {
+		for y := len(levelData[0][x]) - 1; y >= 0; y-- {
 
 			isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
 			mat := pixel.IM.Moved(isoCoords)
-			tiles[levelData[x][y]].Draw(batch, mat)
+
+			// base map layer
+			tiles[0][levelData[0][x][y]].Draw(batch, mat)
 
 			// draw doodads
-			if doodadData[x][y] > 0 {
-				doodads[doodadData[x][y]].Draw(batch, mat)
+			if levelData[1][x][y] > 0 {
+				tiles[1][levelData[1][x][y]].Draw(batch, mat)
 			}
+
+			// anims on their own layer? does it matter with player locked camera?
 
 			for _, a := range actors {
 				startingFrame := 0
@@ -400,7 +313,6 @@ func updateMap(batch *pixel.Batch, actors []*actor, dt float64) {
 						pmat = pmat.ScaledXY(pixel.ZV, pixel.V(-1, 1))
 					}
 
-					// if frame is 4 and len anims is 2
 					if a.direction.n+a.direction.e < 0 {
 						startingFrame = half_length
 					}
@@ -424,5 +336,6 @@ func isoToCartesian(pt pixel.Vec) pixel.Vec {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	pixelgl.Run(run)
 }

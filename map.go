@@ -1,6 +1,10 @@
 package main
 
-import "math/rand"
+import (
+	"math/rand"
+
+	"github.com/faiface/pixel"
+)
 
 func wall_gen(x int, y int, levelData [2][32][32]uint) [2][32][32]uint {
 
@@ -19,6 +23,32 @@ func wall_gen(x int, y int, levelData [2][32][32]uint) [2][32][32]uint {
 		blocks--
 	}
 	return levelData
+}
+
+func generateTiles(pic pixel.Picture) [2][]*pixel.Sprite {
+	var tiles [2][]*pixel.Sprite
+	// ground
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 64, tileSize, 128)))
+
+	// road
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
+
+	// bridge
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(64, 256, 128, 192)))
+
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 192)))
+
+	// block
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
+
+	// water
+	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(64, 128, 128, 192)))
+
+	// the 0th doodad is nil to allow direct grid assignment (empty array is 0)
+	tiles[1] = append(tiles[1], nil)
+	tiles[1] = append(tiles[1], pixel.NewSprite(pic, pixel.R(128, 64, 256, 256)))
+
+	return tiles
 }
 
 func generateMap(endOfTheRoad *node) [2][32][32]uint {

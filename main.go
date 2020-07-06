@@ -45,30 +45,14 @@ func loadPicture(path string) (pixel.Picture, error) {
 	return pixel.PictureDataFromImage(img), nil
 }
 
-func generateTiles(pic pixel.Picture) [2][]*pixel.Sprite {
-	var tiles [2][]*pixel.Sprite
-	// ground
-	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 64, tileSize, 128)))
-
-	// road
-	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 128, tileSize, 192)))
-
-	// bridge
-	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(64, 256, 128, 192)))
-
-	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 256, tileSize, 192)))
-
-	// block
-	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(0, 0, tileSize, 64)))
-
-	// water
-	tiles[0] = append(tiles[0], pixel.NewSprite(pic, pixel.R(64, 128, 128, 192)))
-
-	// the 0th doodad is nil to allow direct grid assignment (empty array is 0)
-	tiles[1] = append(tiles[1], nil)
-	tiles[1] = append(tiles[1], pixel.NewSprite(pic, pixel.R(128, 64, 256, 256)))
-
-	return tiles
+func findOpenNode(levelData [2][32][32]uint) *node {
+	x := rand.Intn(31)
+	y := rand.Intn(31)
+	for levelData[0][x][y] != 1 {
+		x = rand.Intn(31)
+		y = rand.Intn(31)
+	}
+	return &node{x: x, y: y}
 }
 
 func run() {
@@ -96,13 +80,32 @@ func run() {
 		panic(err)
 	}
 
+	// SPRITESHEET
+	psheet, err := loadPicture("test2.png")
+	if err != nil {
+		panic(err)
+	}
+
 	batch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
+	animbatch := pixel.NewBatch(&pixel.TrianglesData{}, psheet)
 	tiles := generateTiles(pic)
 
-	// load player sprites
-	var player_anim = generateActorSprites(pic, 320)
+	// TODO: player respawn on death, tower prototype, potion bar, skill bar, broken bridges (regen levels until path is len > 0)
+	// evolutionary approach to enemy composition
+	// knights, skeletons, skeleton mages, skeleton warriors
+	// track how long they survive and award fitness for completing the level
+	// lemmings like terrain alteration / abilities (freezing the water to make a bridge)
+	// fix enthrall
+	// enchantress artwork
+	// loot pickups grant abilities (spellbooks)
+	// artifacts
+	// inventory
 
-	var player = spawn_actor(0, 0, "player", player_anim)
+	// load player sprites
+	var player_anim = generateActorSprites(psheet)
+
+	player_spawn := findOpenNode(levelData)
+	var player = spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim)
 	player.maxhp = 80
 	player.hp = 80
 	player.faction = friendly
@@ -111,7 +114,7 @@ func run() {
 
 	actors = append(actors, player)
 
-	var creep_anim = generateActorSprites(pic, 384)
+	var creep_anim = generateActorSprites(psheet)
 
 	var (
 		frames = 0
@@ -131,33 +134,33 @@ func run() {
 			a.coord = pixel.Lerp(a.coord, cartesianToIso(pixel.Vec{X: float64(a.x), Y: float64(a.y)}), dt*4.0)
 		}
 
-		if ticks > 0.1 {
-
-			frame = (frame + 1) % 4
+		if ticks > 0.05 {
 
 			// TODO: APPLY STATUS EFFECTS
 			// CHECK STATUS AND APPLY STATE
 
 			actorStateMachine(actors, levelData)
 
-			// REMOVE DEAD ACTORS
-			for _, a := range actors {
+			// REMOVE DEAD ACTORS AND ADVANCE FRAME
+			for i, a := range actors {
+
+				a.frame = (a.frame + 1) % 10
 				// KILL CREEPS WHO REACH END OF THE ROAD
 				// TODO: ADJUST SCORE
 				if (a.name == "creep" && a.x == a.dest.x && a.y == a.dest.y) || a.hp < 1 {
 					a.state = dead
 				}
-				// if a.state == dead {
-				// 	actors[i] = actors[len(actors)-1]
-				// 	actors[len(actors)-1] = nil
-				// 	actors = actors[:len(actors)-1]
-				// 	break
-				// }
+				if a.state == dead && a.frame == 9 {
+					actors[i] = actors[len(actors)-1]
+					actors[len(actors)-1] = nil
+					actors = actors[:len(actors)-1]
+					break
+				}
 			}
 			ticks = 0
 		}
 
-		batchUpdate(batch, actors, dt, levelData, tiles)
+		batchUpdate(batch, animbatch, actors, dt, levelData, tiles)
 
 		last = time.Now()
 
@@ -267,6 +270,7 @@ func run() {
 
 		win.Clear(pixel.RGBA{R: 0, G: 0, B: 0, A: 0})
 		batch.Draw(win)
+		animbatch.Draw(win)
 		imd.Draw(win)
 		win.Update()
 
@@ -281,9 +285,13 @@ func run() {
 	}
 }
 
-func batchUpdate(batch *pixel.Batch, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite) {
+func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite) {
 
+	// TODO: I only need to clear this if the camera moved last tick.
 	batch.Clear()
+	animbatch.Clear()
+
+	// not tiles display on top of character atm
 
 	for x := len(levelData[0]) - 1; x >= 0; x-- {
 		for y := len(levelData[0][x]) - 1; y >= 0; y-- {
@@ -299,8 +307,6 @@ func batchUpdate(batch *pixel.Batch, actors []*actor, dt float64, levelData [2][
 				tiles[1][levelData[1][x][y]].Draw(batch, mat)
 			}
 
-			// anims on their own layer? does it matter with player locked camera?
-
 			for _, a := range actors {
 				startingFrame := 0
 				half_length := len(a.anims[a.state]) / 2
@@ -309,16 +315,11 @@ func batchUpdate(batch *pixel.Batch, actors []*actor, dt float64, levelData [2][
 				// draw actors
 				offset := 0.2
 				if x == int(i.X+offset) && y == int(i.Y+offset) {
-					if a.direction.n != 0 && a.direction.e == 0 {
-						pmat = pmat.ScaledXY(pixel.ZV, pixel.V(-1, 1))
-					}
 
-					if a.direction.n+a.direction.e < 0 {
-						startingFrame = half_length
-					}
+					startingFrame = a.direction * 10
 					pmat = pmat.Moved(a.coord)
 
-					a.anims[a.state][(frame%half_length+startingFrame)].Draw(batch, pmat)
+					a.anims[a.state][(a.frame%half_length+startingFrame)].Draw(animbatch, pmat)
 				}
 			}
 		}

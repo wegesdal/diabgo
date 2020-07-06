@@ -8,16 +8,18 @@ import (
 	"golang.org/x/image/colornames"
 )
 
-type cardinal struct {
-	n int
-	e int
-}
+const (
+	north = iota
+	east
+	south
+	west
+)
 
 const (
-	walk = iota
-	attack
-	dead
+	dead = iota
 	idle
+	attack
+	walk
 	cast
 )
 
@@ -32,7 +34,7 @@ type actor struct {
 	y         int
 	name      string
 	coord     pixel.Vec
-	frames    []*pixel.Sprite
+	frame     int
 	maxhp     int
 	hp        int
 	state     int
@@ -42,7 +44,7 @@ type actor struct {
 	prange    float64
 	arange    float64
 	dest      *node
-	direction cardinal
+	direction int
 	target    *actor
 	anims     map[int][]*pixel.Sprite
 }
@@ -56,6 +58,7 @@ func spawn_actor(x int, y int, name string, anims map[int][]*pixel.Sprite) *acto
 	var a = actor{x: x, y: y}
 	a.name = name
 	a.anims = anims
+	a.frame = 0
 	a.maxhp = 40
 	a.hp = 15
 	a.dest = &node{x: x, y: y}
@@ -66,20 +69,15 @@ func spawn_actor(x int, y int, name string, anims map[int][]*pixel.Sprite) *acto
 	return &a
 }
 
-func generateActorSprites(pic pixel.Picture, min_Y float64) map[int][]*pixel.Sprite {
+func generateActorSprites(p pixel.Picture) map[int][]*pixel.Sprite {
 	anim := make(map[int][]*pixel.Sprite)
-	var min_X float64 = 0.0
-	for i := 0; i < 28; i++ {
-		if i < 8 {
-			anim[walk] = append(anim[walk], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 16 {
-			anim[attack] = append(anim[attack], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 18 {
-			anim[dead] = append(anim[dead], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 20 {
-			anim[idle] = append(anim[idle], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
-		} else if i < 28 {
-			anim[cast] = append(anim[cast], pixel.NewSprite(pic, pixel.R(min_X+64*float64(i), min_Y, min_X+64*float64(i+1), min_Y+64)))
+	frames_per_action := 10
+	directions := 4
+	sprite_size := 256
+
+	for y := 0; y < 5; y++ {
+		for x := 0; x < frames_per_action*directions; x++ {
+			anim[4-y] = append(anim[4-y], pixel.NewSprite(p, pixel.R(float64(sprite_size*x), float64(sprite_size*y), float64(sprite_size*(x+1)), float64(sprite_size*(y+1)))))
 		}
 	}
 	return anim
@@ -90,12 +88,27 @@ func step_forward(a *actor, path []*node) {
 		i := isoToCartesian(a.coord)
 		// don't update next block until close
 		if math.Pow(i.X-float64(a.x), 2.0)+math.Pow(i.Y-float64(a.y), 2.0) < 1 {
-			a.direction.e = a.x - path[len(path)-1].x
-			a.direction.n = a.y - path[len(path)-1].y
+
+			a.direction = wayfind(a.x, a.y, path[len(path)-1].x, path[len(path)-1].y)
 			a.x = path[len(path)-1].x
 			a.y = path[len(path)-1].y
+
 		}
 	}
+}
+
+func wayfind(x1 int, y1 int, x2 int, y2 int) int {
+	d := 0
+	if x1-x2 == 1 {
+		d = 0
+	} else if x1-x2 == -1 {
+		d = 2
+	} else if y1-y2 == 1 {
+		d = 3
+	} else if y1-y2 == -1 {
+		d = 1
+	}
+	return d
 }
 
 func actorStateMachine(actors []*actor, levelData [2][32][32]uint) {
@@ -149,8 +162,8 @@ func actorStateMachine(actors []*actor, levelData [2][32][32]uint) {
 
 				if d_square < a.arange {
 					a.state = attack
-					a.direction.e = a.x - a.target.x
-					a.direction.n = a.y - a.target.y
+
+					a.direction = wayfind(a.x, a.y, a.target.x, a.target.y)
 				}
 
 				// otherwise move towards target
@@ -172,6 +185,7 @@ func actorStateMachine(actors []*actor, levelData [2][32][32]uint) {
 
 			if a.target.hp < 1 {
 				a.state = idle
+				a.frame = 0
 				a.target.state = dead
 				a.target = a
 			}
@@ -204,9 +218,9 @@ func drawHealthPlates(actors []*actor, imd *imdraw.IMDraw) {
 
 				if i*10 < a.hp && (i+1)*10 >= a.hp {
 					fractionOfBar := float64((a.hp % 10)) / 10.0
-					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 128.0})
 					f := fractionOfBar * bar_length
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 26.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 128.0})
 					if a.faction == friendly {
 						imd.Color = colornames.Darkgreen
 					} else if a.faction == neutral {
@@ -214,13 +228,13 @@ func drawHealthPlates(actors []*actor, imd *imdraw.IMDraw) {
 					} else if a.faction == hostile {
 						imd.Color = colornames.Darkred
 					}
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 128.0})
 					imd.Line(3)
 
 				} else {
 					// draw the whole bar
-					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 26.0})
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 26.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 128.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 128.0})
 					imd.Line(3)
 				}
 			}

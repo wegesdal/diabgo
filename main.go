@@ -10,6 +10,8 @@ import (
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
+	"github.com/faiface/pixel/text"
+	"golang.org/x/image/font/basicfont"
 
 	_ "image/png"
 )
@@ -30,6 +32,7 @@ var (
 	camZoom      = 1.0
 	camZoomSpeed = 1.2
 	frame        = 0
+	cameraMoved  = true
 )
 
 func loadPicture(path string) (pixel.Picture, error) {
@@ -58,7 +61,6 @@ func findOpenNode(levelData [2][32][32]uint) *node {
 func run() {
 
 	var err error
-
 	endOfTheRoad := &node{x: rand.Intn(31), y: 31}
 	levelData := generateMap(endOfTheRoad)
 
@@ -88,6 +90,7 @@ func run() {
 
 	batch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
 	animbatch := pixel.NewBatch(&pixel.TrianglesData{}, psheet)
+	doodadbatch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
 	tiles := generateTiles(pic)
 
 	// TODO: player respawn on death, tower prototype, potion bar, skill bar, broken bridges (regen levels until path is len > 0)
@@ -160,7 +163,10 @@ func run() {
 			ticks = 0
 		}
 
-		batchUpdate(batch, animbatch, actors, dt, levelData, tiles)
+		text_atlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
+		txt := text.New(pixel.Vec.Sub(camPos, pixel.Vec{X: 100.0, Y: -100.0}), text_atlas)
+
+		batchUpdate(batch, animbatch, doodadbatch, txt, actors, dt, levelData, tiles)
 
 		last = time.Now()
 
@@ -232,7 +238,13 @@ func run() {
 			}
 		}
 
+		oldPos := camPos
 		camPos = pixel.Lerp(camPos, player.coord, dt)
+		if oldPos == camPos {
+			cameraMoved = false
+		} else {
+			cameraMoved = true
+		}
 
 		// manual camera
 
@@ -266,12 +278,17 @@ func run() {
 			}
 		}
 
-		drawHealthPlates(actors, imd)
-
 		win.Clear(pixel.RGBA{R: 0, G: 0, B: 0, A: 0})
-		batch.Draw(win)
-		animbatch.Draw(win)
+		if cameraMoved {
+			batch.Draw(win)
+		}
+		drawHealthPlates(actors, imd)
 		imd.Draw(win)
+
+		animbatch.Draw(win)
+		doodadbatch.Draw(win)
+		txt.Draw(win, pixel.IM.Scaled(txt.Orig, 4))
+
 		win.Update()
 
 		frames++
@@ -285,44 +302,74 @@ func run() {
 	}
 }
 
-func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite) {
+func Max(x, y int) int {
+	if x < y {
+		return y
+	}
+	return x
+}
+
+func Min(x, y int) int {
+	if x > y {
+		return y
+	}
+	return x
+}
+
+func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.Batch, txt *text.Text, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite) {
 
 	// TODO: I only need to clear this if the camera moved last tick.
 	batch.Clear()
 	animbatch.Clear()
+	doodadbatch.Clear()
 
 	// not tiles display on top of character atm
 
-	for x := len(levelData[0]) - 1; x >= 0; x-- {
-		for y := len(levelData[0][x]) - 1; y >= 0; y-- {
+	// only draw tiles close to
+	var player *actor
+	for _, a := range actors {
+		if a.name == "player" {
+			player = a
+			break
+		}
+	}
 
-			isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
-			mat := pixel.IM.Moved(isoCoords)
+	if player != nil {
 
-			// base map layer
-			tiles[0][levelData[0][x][y]].Draw(batch, mat)
+		for x := Min(player.x+16, len(levelData[0])-1); x >= Max(player.x-16, 0); x-- {
+			for y := Min(player.y+16, len(levelData[0])-1); y >= Max(player.y-16, 0); y-- {
 
-			// draw doodads
-			if levelData[1][x][y] > 0 {
-				tiles[1][levelData[1][x][y]].Draw(batch, mat)
-			}
+				isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
+				mat := pixel.IM.Moved(isoCoords)
 
-			for _, a := range actors {
-				startingFrame := 0
-				half_length := len(a.anims[a.state]) / 2
-				pmat := pixel.IM
-				i := isoToCartesian(a.coord)
-				// draw actors
-				offset := 0.2
-				if x == int(i.X+offset) && y == int(i.Y+offset) {
+				// base map layer
+				tiles[0][levelData[0][x][y]].Draw(batch, mat)
 
-					startingFrame = a.direction * 10
-					pmat = pmat.Moved(a.coord)
+				// draw doodads
+				if levelData[1][x][y] > 0 {
+					tiles[1][levelData[1][x][y]].Draw(doodadbatch, mat)
+				}
 
-					a.anims[a.state][(a.frame%half_length+startingFrame)].Draw(animbatch, pmat)
+				for _, a := range actors {
+					startingFrame := 0
+					// half_length := len(a.anims[a.state]) / 2
+					pmat := pixel.IM
+					i := isoToCartesian(a.coord)
+					// draw actors
+					offset := 0.2
+					if x == int(i.X+offset) && y == int(i.Y+offset) {
+
+						startingFrame = a.direction * 10
+						pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 0, Y: 60}))
+
+						a.anims[a.state][(a.frame+startingFrame)].Draw(animbatch, pmat)
+					}
 				}
 			}
 		}
+	} else {
+		fmt.Fprintln(txt, "You Died")
+		// game over
 	}
 }
 

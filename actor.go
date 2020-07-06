@@ -215,12 +215,14 @@ func drawHealthPlates(actors []*actor, imd *imdraw.IMDraw) {
 		}
 		if a.hp > 0 {
 			for i := 0; i < bars; i++ {
+				verticalOffset := 192.0
 
 				if i*10 < a.hp && (i+1)*10 >= a.hp {
+
 					fractionOfBar := float64((a.hp % 10)) / 10.0
-					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 128.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + verticalOffset})
 					f := fractionOfBar * bar_length
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + 128.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: a.coord.Y + verticalOffset})
 					if a.faction == friendly {
 						imd.Color = colornames.Darkgreen
 					} else if a.faction == neutral {
@@ -228,25 +230,25 @@ func drawHealthPlates(actors []*actor, imd *imdraw.IMDraw) {
 					} else if a.faction == hostile {
 						imd.Color = colornames.Darkred
 					}
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 128.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + verticalOffset})
 					imd.Line(3)
 
 				} else {
 					// draw the whole bar
-					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + 128.0})
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + 128.0})
+					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: a.coord.Y + verticalOffset})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: a.coord.Y + verticalOffset})
 					imd.Line(3)
 				}
 			}
-		}
 
-		// iso square
-		// imd.Color = colornames.Lightpink
-		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) + 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) + 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-		// imd.Push(pixel.Vec.Sub(cartesianToIso(pixel.Vec{X: float64(player.x) - 1.5, Y: float64(player.y) - 1.5}), pixel.Vec{X: 0, Y: 7.0}))
-		// imd.Polygon(1)
+			// iso square
+			// imd.Color = colornames.Lightpink
+			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: -1.5, Y: -1.5})))
+			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: -1.5, Y: 1.5})))
+			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: 1.5, Y: 1.5})))
+			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: 1.5, Y: -1.5})))
+			// imd.Polygon(1)
+		}
 
 	}
 

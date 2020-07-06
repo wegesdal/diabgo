@@ -46,7 +46,7 @@ func generateTiles(pic pixel.Picture) [2][]*pixel.Sprite {
 
 	// the 0th doodad is nil to allow direct grid assignment (empty array is 0)
 	tiles[1] = append(tiles[1], nil)
-	tiles[1] = append(tiles[1], pixel.NewSprite(pic, pixel.R(128, 64, 256, 256)))
+	tiles[1] = append(tiles[1], pixel.NewSprite(pic, pixel.R(128, 64, tileSize+128, 192)))
 
 	return tiles
 }
@@ -64,6 +64,7 @@ func generateMap(endOfTheRoad *node) [2][32][32]uint {
 
 	// generate a path
 	road_start := &node{x: rand.Intn(31), y: 0}
+
 	road := Astar(road_start, endOfTheRoad, levelData[0])
 
 	// generate a river
@@ -73,18 +74,17 @@ func generateMap(endOfTheRoad *node) [2][32][32]uint {
 	// bake the road onto the array
 	for _, node := range road {
 		levelData[0][node.x][node.y] = 1
+		levelData[0][node.x+1][node.y] = 1
+
 	}
 	// bake the river onto the array
 	river = append(river, river_start)
 
 	for _, node := range river {
 		if levelData[0][node.x][node.y] == 1 {
-			levelData[0][node.x][node.y-1] = 2
 			levelData[0][node.x][node.y] = 3
-			// levelData[0][node.x][node.y-1] = 2
 			levelData[0][node.x][node.y+1] = 3
 			levelData[0][node.x][node.y+2] = 3
-
 		} else {
 			levelData[0][node.x][node.y] = 5
 			levelData[0][node.x][node.y+1] = 5
@@ -99,5 +99,6 @@ func generateMap(endOfTheRoad *node) [2][32][32]uint {
 			levelData[1][x][y] = 1
 		}
 	}
+
 	return levelData
 }

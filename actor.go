@@ -63,7 +63,6 @@ func generateActorSprites(p pixel.Picture, num_rows int, size int) map[int][]*pi
 	anim := make(map[int][]*pixel.Sprite)
 	frames_per_action := 10
 	directions := 4
-
 	for y := 0; y < num_rows; y++ {
 		for x := 0; x < frames_per_action*directions; x++ {
 			anim[4-y] = append(anim[4-y], pixel.NewSprite(p, pixel.R(float64(size*x), float64(size*y), float64(size*(x+1)), float64(size*(y+1)))))

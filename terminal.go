@@ -1,6 +1,10 @@
 package main
 
-import "github.com/faiface/pixel"
+import (
+	"github.com/faiface/pixel"
+	"github.com/faiface/pixel/pixelgl"
+	"github.com/faiface/pixel/text"
+)
 
 func terminalStateMachine(actors []*actor) {
 
@@ -41,4 +45,43 @@ func terminalStateMachine(actors []*actor) {
 			}
 		}
 	}
+}
+
+func handleTerminalInput(player *character, txt *text.Text, input string) string {
+	if player.actor.state == activate {
+		txt.WriteString(win.Typed())
+		input += win.Typed()
+		if win.JustPressed(pixelgl.KeyEnter) || win.Repeated(pixelgl.KeyEnter) {
+			switch input {
+			case "foo":
+				txt.WriteRune('\n')
+				txt.WriteString("bar")
+			case "heal":
+				player.hp = player.maxhp
+				txt.WriteRune('\n')
+				txt.WriteString("completed")
+			default:
+				txt.WriteRune('\n')
+				txt.WriteString(input + " is not defined")
+			}
+			input = ""
+			txt.WriteRune('\n')
+			txt.WriteString("> ")
+
+		}
+	}
+	return input
+}
+
+func renderTerminalText(player *character, txt *text.Text, input string) string {
+
+	if player.actor.state == activate {
+		txt.Draw(win, pixel.IM.Moved(pixel.Vec{X: player.actor.coord.X + 22.0, Y: player.actor.coord.Y + 90.0}.Sub(txt.Bounds().Min)))
+	} else {
+		input = ""
+		txt.Clear()
+		txt.Color = pixel.RGBA{R: 1.0, G: 0.6, B: 0, A: 1.0}
+		txt.WriteString("> ")
+	}
+	return input
 }

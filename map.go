@@ -51,8 +51,8 @@ func generateTiles(pic pixel.Picture) [2][]*pixel.Sprite {
 	return tiles
 }
 
-func generateMap(endOfTheRoad *node) [2][32][32]uint {
-
+func generateMap() ([2][32][32]uint, *node) {
+	endOfTheRoad := &node{x: rand.Intn(31), y: 31}
 	var levelData = [2][32][32]uint{}
 
 	// make some walls
@@ -100,5 +100,5 @@ func generateMap(endOfTheRoad *node) [2][32][32]uint {
 		}
 	}
 
-	return levelData
+	return levelData, endOfTheRoad
 }

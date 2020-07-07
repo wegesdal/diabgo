@@ -2,16 +2,13 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
 	"github.com/faiface/pixel/text"
-	"golang.org/x/image/colornames"
 	"golang.org/x/image/font/basicfont"
 
 	_ "image/png"
@@ -23,12 +20,10 @@ const (
 	tileSize     = 64
 )
 
-var win *pixelgl.Window
-
-var actors []*actor
-var characters []*character
-
 var (
+	win          *pixelgl.Window
+	actors       []*actor
+	characters   []*character
 	camPos       = pixel.ZV
 	camSpeed     = 500.0
 	camZoom      = 1.0
@@ -37,34 +32,11 @@ var (
 	cameraMoved  = true
 )
 
-func loadPicture(path string) (pixel.Picture, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	img, _, err := image.Decode(file)
-	if err != nil {
-		return nil, err
-	}
-	return pixel.PictureDataFromImage(img), nil
-}
-
-func findOpenNode(levelData [2][32][32]uint) *node {
-	x := rand.Intn(31)
-	y := rand.Intn(31)
-	for levelData[0][x][y] != 1 {
-		x = rand.Intn(31)
-		y = rand.Intn(31)
-	}
-	return &node{x: x, y: y}
-}
-
 func run() {
 
 	var err error
-	endOfTheRoad := &node{x: rand.Intn(31), y: 31}
-	levelData := generateMap(endOfTheRoad)
+
+	levelData, endOfTheRoad := generateMap()
 
 	cfg := pixelgl.WindowConfig{
 		Title:                  "Diabgo",
@@ -73,34 +45,25 @@ func run() {
 		TransparentFramebuffer: true,
 		Undecorated:            true,
 	}
+
 	win, err = pixelgl.NewWindow(cfg)
 	if err != nil {
 		panic(err)
 	}
 
-	// SPRITESHEET
+	// SPRITESHEETS
 	pic, err := loadPicture("dawncastle.png")
 	if err != nil {
 		panic(err)
 	}
-
-	// SPRITESHEET
 	psheet, err := loadPicture("hacker.png")
 	if err != nil {
 		panic(err)
 	}
-
 	tsheet, err := loadPicture("terminal.png")
 	if err != nil {
 		panic(err)
 	}
-
-	batch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
-	animbatch := pixel.NewBatch(&pixel.TrianglesData{}, psheet)
-	doodadbatch := pixel.NewBatch(&pixel.TrianglesData{}, pic)
-	widgetbatch := pixel.NewBatch(&pixel.TrianglesData{}, tsheet)
-
-	tiles := generateTiles(pic)
 
 	// TODO: player respawn on death, tower prototype, potion bar, skill bar, broken bridges (regen levels until path is len > 0)
 	// evolutionary approach to enemy composition
@@ -108,45 +71,43 @@ func run() {
 	// track how long they survive and award fitness for completing the level
 	// lemmings like terrain alteration / abilities (freezing the water to make a bridge)
 	// fix enthrall
-	// enchantress artwork
 	// loot pickups grant abilities (spellbooks)
 	// artifacts
 	// inventory
 
 	// load player sprites
-	var player_anim = generateActorSprites(psheet, 5, 256)
+	var (
+		batch         = pixel.NewBatch(&pixel.TrianglesData{}, pic)
+		animbatch     = pixel.NewBatch(&pixel.TrianglesData{}, psheet)
+		doodadbatch   = pixel.NewBatch(&pixel.TrianglesData{}, pic)
+		widgetbatch   = pixel.NewBatch(&pixel.TrianglesData{}, tsheet)
+		tiles         = generateTiles(pic)
+		player_anim   = generateActorSprites(psheet, 5, 256)
+		player_spawn  = findOpenNode(levelData)
+		act           = spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim)
+		player        = spawn_character(act)
+		creep_anim    = generateActorSprites(psheet, 5, 256)
+		frames        = 0
+		ticks         = 0.0
+		second        = time.Tick(time.Second)
+		terminal_anim = generateActorSprites(tsheet, 1, 128)
+		text_atlas    = text.NewAtlas(basicfont.Face7x13, text.ASCII)
+		txt           = text.New(pixel.V(0, 0), text_atlas)
+		input         = ""
+		last          = time.Now()
+	)
 
-	player_spawn := findOpenNode(levelData)
-
-	act := spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim)
-	actors = append(actors, act)
-	var player = spawn_character(act)
 	player.maxhp = 80
 	player.hp = 80
 	player.actor.faction = friendly
 	player.prange = 8000.0
 	player.arange = 2000.0
 
+	actors = append(actors, act)
 	characters = append(characters, player)
-
-	var creep_anim = generateActorSprites(psheet, 5, 256)
-
-	var (
-		frames = 0
-		ticks  = 0.0
-		second = time.Tick(time.Second)
-	)
-
-	var terminal_anim = generateActorSprites(tsheet, 1, 128)
-	text_atlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
-	txt := text.New(pixel.Vec.Sub(camPos, pixel.Vec{X: 100.0, Y: -100.0}), text_atlas)
-
 	actors = append(actors, spawn_actor(10, 10, "terminal", terminal_anim))
 
-	last := time.Now()
-
 	for !win.Closed() {
-		txt.Orig = (pixel.Vec.Sub(pixel.Vec{X: 0.0, Y: 0.0}, camPos))
 
 		dt := time.Since(last).Seconds()
 		imd := imdraw.New(nil)
@@ -180,11 +141,11 @@ func run() {
 		win.SetMatrix(cam)
 
 		if win.JustPressed(pixelgl.Key1) {
-			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
-
-			var coordX = int(raw.X + 1)
-			var coordY = int(raw.Y + 1)
-
+			var (
+				raw    = isoToCartesian(cam.Unproject(win.MousePosition()))
+				coordX = int(raw.X + 1)
+				coordY = int(raw.Y + 1)
+			)
 			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
 				if levelData[0][coordX][coordY] == 0 {
 					levelData[0][coordX][coordY] = 4
@@ -196,10 +157,11 @@ func run() {
 		}
 
 		if win.JustPressed(pixelgl.Key2) {
-			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
-
-			var coordX = int(raw.X + 1)
-			var coordY = int(raw.Y + 1)
+			var (
+				raw    = isoToCartesian(cam.Unproject(win.MousePosition()))
+				coordX = int(raw.X + 1)
+				coordY = int(raw.Y + 1)
+			)
 
 			if coordX < len(levelData[1]) && coordY < len(levelData[1]) && coordX >= 0 && coordY >= 0 {
 				if levelData[1][coordX][coordY] == 0 {
@@ -211,16 +173,18 @@ func run() {
 		}
 
 		if win.JustPressed(pixelgl.Key3) {
-			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
-			var coordX = int(raw.X + 1)
-			var coordY = int(raw.Y + 1)
-			act := spawn_actor(coordX, coordY, "creep", creep_anim)
-			actors = append(actors, act)
-			c := spawn_character(act)
+			var (
+				raw    = isoToCartesian(cam.Unproject(win.MousePosition()))
+				coordX = int(raw.X + 1)
+				coordY = int(raw.Y + 1)
+				act    = spawn_actor(coordX, coordY, "creep", creep_anim)
+				c      = spawn_character(act)
+			)
 			c.dest = endOfTheRoad
 			c.actor.faction = hostile
 			c.prange = 8000.0
 			c.arange = 2000.0
+			actors = append(actors, act)
 			characters = append(characters, c)
 		}
 
@@ -237,42 +201,18 @@ func run() {
 
 		if win.Pressed(pixelgl.MouseButtonLeft) {
 			player.actor.state = walk
-			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
-
-			var coordX = int(raw.X + 1)
-			var coordY = int(raw.Y + 1)
+			var (
+				raw    = isoToCartesian(cam.Unproject(win.MousePosition()))
+				coordX = int(raw.X + 1)
+				coordY = int(raw.Y + 1)
+			)
 
 			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
 				player.dest = &node{x: coordX, y: coordY}
 			}
 		}
 
-		oldPos := camPos
 		camPos = pixel.Lerp(camPos, player.actor.coord, dt)
-		if oldPos == camPos {
-			cameraMoved = false
-		} else {
-			cameraMoved = true
-		}
-
-		// manual camera
-
-		// if win.Pressed(pixelgl.KeyLeft) {
-		// 	camPos.X -= camSpeed * dt
-		// }
-		// if win.Pressed(pixelgl.KeyRight) {
-		// 	camPos.X += camSpeed * dt
-		// }
-		// if win.Pressed(pixelgl.KeyDown) {
-		// 	camPos.Y -= camSpeed * dt
-		// }
-		// if win.Pressed(pixelgl.KeyUp) {
-		// 	camPos.Y += camSpeed * dt
-		// }
-
-		// camZoom *= math.Pow(camZoomSpeed, win.MouseScroll().Y)
-
-		// ... draw the scene using imd
 
 		for i := 0; i < len(characters); i++ {
 			_, charmed := characters[i].actor.effects["charmed"]
@@ -285,23 +225,20 @@ func run() {
 			}
 		}
 
-		// if player.actor.state == activate {
-		txt.WriteString(win.Typed())
-		// }
+		// CONFIGURE TERMINAL
+
+		input = handleTerminalInput(player, txt, input)
 
 		win.Clear(pixel.RGBA{R: 0, G: 0, B: 0, A: 0})
 
-		// if cameraMoved {
 		batch.Draw(win)
-		// }
 		drawHealthPlates(characters, imd)
 		imd.Draw(win)
 		widgetbatch.Draw(win)
 		animbatch.Draw(win)
 		doodadbatch.Draw(win)
 
-		txt.Color = colornames.Blanchedalmond
-		txt.Draw(win, pixel.IM.Scaled(txt.Orig, 2))
+		input = renderTerminalText(player, txt, input)
 
 		win.Update()
 
@@ -316,29 +253,12 @@ func run() {
 	}
 }
 
-func Max(x, y int) int {
-	if x < y {
-		return y
-	}
-	return x
-}
-
-func Min(x, y int) int {
-	if x > y {
-		return y
-	}
-	return x
-}
-
 func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.Batch, widgetbatch *pixel.Batch, txt *text.Text, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite, imd *imdraw.IMDraw) {
 
-	// TODO: I only need to clear this if the camera moved last tick.
 	batch.Clear()
 	widgetbatch.Clear()
 	animbatch.Clear()
 	doodadbatch.Clear()
-
-	// not tiles display on top of character atm
 
 	// only draw tiles close to player
 	var player *actor
@@ -385,37 +305,18 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 							// adjusting Y to account for tall player model
 							a.anims[a.state][(a.frame+startingFrame)].Draw(animbatch, pmat)
 						} else {
+
 							// DRAW WIDGETS
 							pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 25, Y: 80}))
 							a.anims[4][(a.frame+startingFrame)].Draw(widgetbatch, pmat)
 
-							// iso square
-							imd.Color = colornames.Lightpink
-							imd.Push(pixel.Vec.Sub(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: -1.5, Y: -1.5})), pixel.Vec{X: 0, Y: 10}))
-							imd.Push(pixel.Vec.Sub(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: -1.5, Y: 1.5})), pixel.Vec{X: 0, Y: 10}))
-							imd.Push(pixel.Vec.Sub(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: 1.5, Y: 1.5})), pixel.Vec{X: 0, Y: 10}))
-							imd.Push(pixel.Vec.Sub(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: 1.5, Y: -1.5})), pixel.Vec{X: 0, Y: 10}))
-							imd.Polygon(1)
+							isoSquare(a.coord, 3, imd)
 						}
 					}
 				}
 			}
 		}
-	} else {
-		txt.Color = colornames.Lightgreen
-		fmt.Fprintln(txt, "You Died")
-		// game over
 	}
-}
-
-func cartesianToIso(pt pixel.Vec) pixel.Vec {
-	return pixel.V((pt.X-pt.Y)*(tileSize/2), (pt.X+pt.Y)*(tileSize/4))
-}
-
-func isoToCartesian(pt pixel.Vec) pixel.Vec {
-	x := pt.X*(2.0/tileSize) + pt.Y*(4/tileSize)
-	y := ((pt.Y * 4.0 / tileSize) - x) / 2
-	return pixel.V(x+y, y)
 }
 
 func main() {

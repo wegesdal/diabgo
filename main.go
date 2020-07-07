@@ -11,6 +11,7 @@ import (
 	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
 	"github.com/faiface/pixel/text"
+	"golang.org/x/image/colornames"
 	"golang.org/x/image/font/basicfont"
 
 	_ "image/png"
@@ -25,6 +26,7 @@ const (
 var win *pixelgl.Window
 
 var actors []*actor
+var characters []*character
 
 var (
 	camPos       = pixel.ZV
@@ -108,14 +110,14 @@ func run() {
 	var player_anim = generateActorSprites(psheet)
 
 	player_spawn := findOpenNode(levelData)
-	var player = spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim)
+	var player = spawn_character(spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim))
 	player.maxhp = 80
 	player.hp = 80
-	player.faction = friendly
+	player.actor.faction = friendly
 	player.prange = 8000.0
 	player.arange = 2000.0
 
-	actors = append(actors, player)
+	characters = append(characters, player)
 
 	var creep_anim = generateActorSprites(psheet)
 
@@ -133,8 +135,8 @@ func run() {
 
 		ticks += dt
 
-		for _, a := range actors {
-			a.coord = pixel.Lerp(a.coord, cartesianToIso(pixel.Vec{X: float64(a.x), Y: float64(a.y)}), dt*4.0)
+		for _, c := range characters {
+			c.actor.coord = pixel.Lerp(c.actor.coord, cartesianToIso(pixel.Vec{X: float64(c.actor.x), Y: float64(c.actor.y)}), dt*4.0)
 		}
 
 		if ticks > 0.05 {
@@ -142,21 +144,22 @@ func run() {
 			// TODO: APPLY STATUS EFFECTS
 			// CHECK STATUS AND APPLY STATE
 
-			actorStateMachine(actors, levelData)
+			characterStateMachine(characters, levelData)
 
 			// REMOVE DEAD ACTORS AND ADVANCE FRAME
-			for i, a := range actors {
+			for i, c := range characters {
 
-				a.frame = (a.frame + 1) % 10
+				c.actor.frame = (c.actor.frame + 1) % 10
 				// KILL CREEPS WHO REACH END OF THE ROAD
 				// TODO: ADJUST SCORE
-				if (a.name == "creep" && a.x == a.dest.x && a.y == a.dest.y) || a.hp < 1 {
-					a.state = dead
+				if c.actor.name == "creep" && c.actor.x == c.dest.x && c.actor.y == c.dest.y && c.actor.state != dead {
+					c.actor.frame = 0
+					c.actor.state = dead
 				}
-				if a.state == dead && a.frame == 9 {
-					actors[i] = actors[len(actors)-1]
-					actors[len(actors)-1] = nil
-					actors = actors[:len(actors)-1]
+				if c.actor.state == dead && c.actor.frame == 9 {
+					characters[i] = characters[len(characters)-1]
+					characters[len(characters)-1] = nil
+					characters = characters[:len(characters)-1]
 					break
 				}
 			}
@@ -208,12 +211,12 @@ func run() {
 			var raw = isoToCartesian(cam.Unproject(win.MousePosition()))
 			var coordX = int(raw.X + 1)
 			var coordY = int(raw.Y + 1)
-			c := spawn_actor(coordX, coordY, "creep", creep_anim)
+			c := spawn_character(spawn_actor(coordX, coordY, "creep", creep_anim))
 			c.dest = endOfTheRoad
-			c.faction = hostile
+			c.actor.faction = hostile
 			c.prange = 8000.0
 			c.arange = 2000.0
-			actors = append(actors, c)
+			characters = append(characters, c)
 		}
 
 		if win.JustPressed(pixelgl.Key4) {
@@ -239,7 +242,7 @@ func run() {
 		}
 
 		oldPos := camPos
-		camPos = pixel.Lerp(camPos, player.coord, dt)
+		camPos = pixel.Lerp(camPos, player.actor.coord, dt)
 		if oldPos == camPos {
 			cameraMoved = false
 		} else {
@@ -267,13 +270,13 @@ func run() {
 
 		imd := imdraw.New(nil)
 
-		for i := 0; i < len(actors); i++ {
-			_, charmed := actors[i].effects["charmed"]
+		for i := 0; i < len(characters); i++ {
+			_, charmed := characters[i].actor.effects["charmed"]
 			if charmed {
 				// if actor.effects
 				imd.Color = pixel.RGBA{R: 1, G: 0, B: 0.5, A: 0.5}
 				imd.EndShape = imdraw.SharpEndShape
-				imd.Push(player.coord, actors[i].coord)
+				imd.Push(player.actor.coord, characters[i].actor.coord)
 				imd.Line(1)
 			}
 		}
@@ -282,7 +285,7 @@ func run() {
 		if cameraMoved {
 			batch.Draw(win)
 		}
-		drawHealthPlates(actors, imd)
+		drawHealthPlates(characters, imd)
 		imd.Draw(win)
 
 		animbatch.Draw(win)
@@ -326,18 +329,18 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 	// not tiles display on top of character atm
 
 	// only draw tiles close to
-	var player *actor
-	for _, a := range actors {
-		if a.name == "player" {
-			player = a
+	var player *character
+	for _, c := range characters {
+		if c.actor.name == "player" {
+			player = c
 			break
 		}
 	}
 
 	if player != nil {
 
-		for x := Min(player.x+16, len(levelData[0])-1); x >= Max(player.x-16, 0); x-- {
-			for y := Min(player.y+16, len(levelData[0])-1); y >= Max(player.y-16, 0); y-- {
+		for x := Min(player.actor.x+16, len(levelData[0])-1); x >= Max(player.actor.x-16, 0); x-- {
+			for y := Min(player.actor.y+16, len(levelData[0])-1); y >= Max(player.actor.y-16, 0); y-- {
 
 				isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
 				mat := pixel.IM.Moved(isoCoords)
@@ -350,24 +353,25 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 					tiles[1][levelData[1][x][y]].Draw(doodadbatch, mat)
 				}
 
-				for _, a := range actors {
+				for _, c := range characters {
 					startingFrame := 0
 					// half_length := len(a.anims[a.state]) / 2
 					pmat := pixel.IM
-					i := isoToCartesian(a.coord)
+					i := isoToCartesian(c.actor.coord)
 					// draw actors
 					offset := 0.2
 					if x == int(i.X+offset) && y == int(i.Y+offset) {
 
-						startingFrame = a.direction * 10
-						pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 0, Y: 60}))
+						startingFrame = c.actor.direction * 10
+						pmat = pmat.Moved(pixel.Vec.Add(c.actor.coord, pixel.Vec{X: 0, Y: 60}))
 
-						a.anims[a.state][(a.frame+startingFrame)].Draw(animbatch, pmat)
+						c.actor.anims[c.actor.state][(c.actor.frame+startingFrame)].Draw(animbatch, pmat)
 					}
 				}
 			}
 		}
 	} else {
+		txt.Color = colornames.Lightgreen
 		fmt.Fprintln(txt, "You Died")
 		// game over
 	}

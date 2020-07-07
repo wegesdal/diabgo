@@ -8,12 +8,12 @@ def filter_hidden(s):
   else:
     return True
 
-path = "/Users/wegesdal/Documents/blender/hacker/"
+path = "/Users/wegesdal/Documents/blender/terminal/"
 poses = [q for q in filter(filter_hidden, [p for p in os.listdir(path)])]
 
 print(poses)
 
-sprite_size = 256
+sprite_size = 128
 max_height = sprite_size * len(poses)
 number_of_angles = 4
 number_of_frames_per_angle = 10
@@ -32,4 +32,4 @@ for i in range(len(poses)):
       x_offset = a*len(pics)*sprite_size + p*sprite_size
       new_im.paste(pics[p], (x_offset,y_offset))
 
-new_im.save('test.png')
+new_im.save('terminal.png')

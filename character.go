@@ -19,23 +19,25 @@ type character struct {
 }
 
 func spawn_character(a *actor) *character {
+
 	var c = character{actor: a}
+
 	c.dest = &node{x: a.x, y: a.y}
-	c.maxhp = 40
-	c.hp = 15
+	c.maxhp = 20
+	c.hp = 10
 	c.target = &c
 	return &c
 }
 
-func step_forward(c *character, path []*node) {
+func step_forward(a *actor, path []*node) {
 	if len(path) > 0 {
-		i := isoToCartesian(c.actor.coord)
+		i := isoToCartesian(a.coord)
 		// don't update next block until close
-		if math.Pow(i.X-float64(c.actor.x), 2.0)+math.Pow(i.Y-float64(c.actor.y), 2.0) < 1 {
+		if math.Pow(i.X-float64(a.x), 2.0)+math.Pow(i.Y-float64(a.y), 2.0) < 1 {
 
-			c.actor.direction = wayfind(c.actor.x, c.actor.y, path[len(path)-1].x, path[len(path)-1].y)
-			c.actor.x = path[len(path)-1].x
-			c.actor.y = path[len(path)-1].y
+			a.direction = wayfind(a.x, a.y, path[len(path)-1].x, path[len(path)-1].y)
+			a.x = path[len(path)-1].x
+			a.y = path[len(path)-1].y
 		}
 	}
 }
@@ -43,9 +45,10 @@ func step_forward(c *character, path []*node) {
 func characterStateMachine(characters []*character, levelData [2][32][32]uint) {
 
 	for _, c := range characters {
+		c.actor.frame = (c.actor.frame + 1) % 10
 		for _, o := range characters {
 
-			// _, ocharmed := o.effects["charmed"]
+			// _, ocharmed := o.actor.effects["charmed"]
 
 			// oc := 1
 			// if ocharmed {
@@ -99,14 +102,14 @@ func characterStateMachine(characters []*character, levelData [2][32][32]uint) {
 				path := Astar(&node{x: c.actor.x, y: c.actor.y}, &node{x: c.target.actor.x, y: c.target.actor.y}, levelData[0])
 				if len(path) > 0 {
 					if path[len(path)-1].x != c.target.actor.x || path[len(path)-1].y != c.target.actor.y {
-						step_forward(c, path)
+						step_forward(c.actor, path)
 					}
 				}
 
 				// if no target
 			} else {
 				path := Astar(&node{x: c.actor.x, y: c.actor.y}, c.dest, levelData[0])
-				step_forward(c, path)
+				step_forward(c.actor, path)
 			}
 
 		} else if c.actor.state == attack {
@@ -169,16 +172,44 @@ func drawHealthPlates(characters []*character, imd *imdraw.IMDraw) {
 					imd.Line(3)
 				}
 			}
-
-			// iso square
-			// imd.Color = colornames.Lightpink
-			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: -1.5, Y: -1.5})))
-			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: -1.5, Y: 1.5})))
-			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: 1.5, Y: 1.5})))
-			// imd.Push(pixel.Vec.Add(a.coord, cartesianToIso(pixel.Vec{X: 1.5, Y: -1.5})))
-			// imd.Polygon(1)
 		}
 
 	}
 
+}
+
+func removeDeadActors(c *character, actors []*actor) []*actor {
+	for j, a := range actors {
+		// remove the actor from the actors slice first
+		if a == c.actor {
+			actors[j] = actors[len(actors)-1]
+			actors[len(actors)-1] = nil
+			actors = actors[:len(actors)-1]
+		}
+	}
+	return actors
+}
+
+func removeDeadCharacters(actors []*actor, characters []*character) ([]*actor, []*character) {
+
+	for i, c := range characters {
+		// KILL CREEPS WHO REACH END OF THE ROAD
+		// TODO: ADJUST SCORE
+		if c.actor.name == "creep" && c.actor.x == c.dest.x && c.actor.y == c.dest.y && c.actor.state != dead {
+			c.actor.frame = 0
+			c.actor.state = dead
+		}
+		if c.actor.state == dead && c.actor.frame == 9 {
+
+			actors = removeDeadActors(c, actors)
+
+			// remove the character from the character slice
+			characters[i] = characters[len(characters)-1]
+			characters[len(characters)-1] = nil
+			characters = characters[:len(characters)-1]
+			// break out of slice (dangerous to continue to modify a slice while iterating it)
+			break
+		}
+	}
+	return actors, characters
 }

@@ -97,8 +97,8 @@ func run() {
 		last          = time.Now()
 	)
 
-	player.maxhp = 80
-	player.hp = 80
+	player.maxhp = 40
+	player.hp = 40
 	player.actor.faction = friendly
 	player.prange = 8000.0
 	player.arange = 2000.0
@@ -106,6 +106,7 @@ func run() {
 	actors = append(actors, act)
 	characters = append(characters, player)
 	actors = append(actors, spawn_actor(10, 10, "terminal", terminal_anim))
+	refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
 
 	for !win.Closed() {
 
@@ -132,6 +133,8 @@ func run() {
 
 			ticks = 0
 		}
+
+		refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
 
 		batchUpdate(batch, animbatch, doodadbatch, widgetbatch, txt, actors, dt, levelData, tiles, imd)
 
@@ -275,46 +278,49 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 
 	if player != nil {
 
-		for x := Min(player.x+16, len(levelData[0])-1); x >= Max(player.x-16, 0); x-- {
-			for y := Min(player.y+16, len(levelData[0])-1); y >= Max(player.y-16, 0); y-- {
+		vision := 32
+		for x := Min(player.x+vision, len(levelData[0])-1); x >= Max(player.x-vision, 0); x-- {
+			for y := Min(player.y+vision, len(levelData[0])-1); y >= Max(player.y-vision, 0); y-- {
 
 				isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
 				mat := pixel.IM.Moved(isoCoords)
 
-				// base map layer
-				tiles[0][levelData[0][x][y].tile].Draw(batch, mat)
+				if levelData[0][x][y].visible {
+					// base map layer
+					tiles[0][levelData[0][x][y].tile].Draw(batch, mat)
 
-				// draw doodads
-				if levelData[1][x][y].tile > 0 {
-					tiles[1][levelData[1][x][y].tile].Draw(doodadbatch, mat)
-				}
+					// draw doodads
+					if levelData[1][x][y].tile > 0 {
+						tiles[1][levelData[1][x][y].tile].Draw(doodadbatch, mat)
+					}
 
-				// draw all actors (actor animations update every frame)
-				for _, a := range actors {
-					startingFrame := 0
-					// half_length := len(a.anims[a.state]) / 2
-					pmat := pixel.IM
-					i := isoToCartesian(a.coord)
-					// draw actors
-					offset := 0.2
-					if x == int(i.X+offset) && y == int(i.Y+offset) {
-						// DRAW CHARACTER
-						// the length of anims tells you if this is a character or item
-						// characters will have an anims length of 5
-						// widgets will have an anims length of 1
-						startingFrame = a.direction * 10
+					// draw all actors (actor animations update every frame)
+					for _, a := range actors {
+						startingFrame := 0
+						// half_length := len(a.anims[a.state]) / 2
+						pmat := pixel.IM
+						i := isoToCartesian(a.coord)
+						// draw actors
+						offset := 0.2
+						if x == int(i.X+offset) && y == int(i.Y+offset) {
+							// DRAW CHARACTER
+							// the length of anims tells you if this is a character or item
+							// characters will have an anims length of 5
+							// widgets will have an anims length of 1
+							startingFrame = a.direction * 10
 
-						if len(a.anims) == 5 {
-							pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 0, Y: 60}))
-							// adjusting Y to account for tall player model
-							a.anims[a.state][(a.frame+startingFrame)].Draw(animbatch, pmat)
-						} else {
+							if len(a.anims) == 5 {
+								pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 0, Y: 60}))
+								// adjusting Y to account for tall player model
+								a.anims[a.state][(a.frame+startingFrame)].Draw(animbatch, pmat)
+							} else {
 
-							// DRAW WIDGETS
-							pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 25, Y: 80}))
-							a.anims[4][(a.frame+startingFrame)].Draw(widgetbatch, pmat)
+								// DRAW WIDGETS
+								pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 25, Y: 80}))
+								a.anims[4][(a.frame+startingFrame)].Draw(widgetbatch, pmat)
 
-							isoSquare(a.coord, 3, imd)
+								isoSquare(a.coord, 3, imd)
+							}
 						}
 					}
 				}

@@ -151,12 +151,13 @@ func drawHealthPlates(characters []*character, imd *imdraw.IMDraw) {
 			for i := 0; i < bars; i++ {
 				verticalOffset := 192.0
 
-				if i*10 < c.hp && (i+1)*10 >= c.hp {
+				if i*10 <= c.hp && (i+1)*10 > c.hp {
 
-					fractionOfBar := float64(((10 - c.hp) % 10)) / 10.0
+					f := float64(10-c.hp%10) / 10
 					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: c.actor.coord.Y + verticalOffset})
-					f := fractionOfBar * bar_length
-					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: c.actor.coord.Y + verticalOffset})
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f*bar_length, Y: c.actor.coord.Y + verticalOffset})
+
+					imd.Line(3)
 					if c.actor.faction == friendly {
 						imd.Color = colornames.Darkgreen
 					} else if c.actor.faction == neutral {
@@ -164,6 +165,7 @@ func drawHealthPlates(characters []*character, imd *imdraw.IMDraw) {
 					} else if c.actor.faction == hostile {
 						imd.Color = colornames.Darkred
 					}
+					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f*bar_length, Y: c.actor.coord.Y + verticalOffset})
 					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: c.actor.coord.Y + verticalOffset})
 					imd.Line(3)
 

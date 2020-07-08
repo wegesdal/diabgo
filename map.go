@@ -12,6 +12,8 @@ func wall_gen(x int, y int, levelData [2][32][32]*node) [2][32][32]*node {
 
 	for blocks > 0 {
 		levelData[0][x][y].tile = 4
+		levelData[0][x][y].walkable = false
+
 		if x < 30 && x > 0 && y < 30 && y > 0 {
 			d6 := rand.Intn(6)
 			if d6 < 2 {

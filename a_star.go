@@ -9,20 +9,22 @@ func add(x int, y int) int {
 }
 
 type node struct {
-	x      int
-	y      int
-	parent *node
-	H      int
-	G      int
+	x       int
+	y       int
+	parent  *node
+	H       int
+	G       int
+	tile    int
+	visible bool
 }
 
 func manhattan_distance(a node, b node) int {
 	return int(math.Abs(float64(a.x-b.x)) + math.Abs(float64(a.y-b.y)))
 }
 
-func walkable(n node, grid [32][32]uint) bool {
+func walkable(n node, grid [32][32]*node) bool {
 	if n.x >= 0 && n.y >= 0 && n.x < len(grid[0]) && n.y < len(grid) {
-		return grid[n.x][n.y] < 4
+		return grid[n.x][n.y].tile < 4
 	} else {
 		return false
 	}
@@ -66,7 +68,7 @@ func remove(s []*node, i int) []*node {
 	return s[:len(s)-1]
 }
 
-func Astar(start *node, end *node, grid [32][32]uint) []*node {
+func Astar(start *node, end *node, grid [32][32]*node) []*node {
 	var open = []*node{}
 	var closed = []*node{}
 	open = append(open, start)

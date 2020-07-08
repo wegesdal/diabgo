@@ -147,10 +147,10 @@ func run() {
 				coordY = int(raw.Y + 1)
 			)
 			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
-				if levelData[0][coordX][coordY] == 0 {
-					levelData[0][coordX][coordY] = 4
+				if levelData[0][coordX][coordY].tile == 0 {
+					levelData[0][coordX][coordY].tile = 4
 				} else {
-					levelData[0][coordX][coordY] = 0
+					levelData[0][coordX][coordY].tile = 0
 				}
 
 			}
@@ -164,10 +164,10 @@ func run() {
 			)
 
 			if coordX < len(levelData[1]) && coordY < len(levelData[1]) && coordX >= 0 && coordY >= 0 {
-				if levelData[1][coordX][coordY] == 0 {
-					levelData[1][coordX][coordY] = 1
+				if levelData[1][coordX][coordY].tile == 0 {
+					levelData[1][coordX][coordY].tile = 1
 				} else {
-					levelData[1][coordX][coordY] = 0
+					levelData[1][coordX][coordY].tile = 0
 				}
 			}
 		}
@@ -253,7 +253,7 @@ func run() {
 	}
 }
 
-func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.Batch, widgetbatch *pixel.Batch, txt *text.Text, actors []*actor, dt float64, levelData [2][32][32]uint, tiles [2][]*pixel.Sprite, imd *imdraw.IMDraw) {
+func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.Batch, widgetbatch *pixel.Batch, txt *text.Text, actors []*actor, dt float64, levelData [2][32][32]*node, tiles [2][]*pixel.Sprite, imd *imdraw.IMDraw) {
 
 	batch.Clear()
 	widgetbatch.Clear()
@@ -278,11 +278,11 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 				mat := pixel.IM.Moved(isoCoords)
 
 				// base map layer
-				tiles[0][levelData[0][x][y]].Draw(batch, mat)
+				tiles[0][levelData[0][x][y].tile].Draw(batch, mat)
 
 				// draw doodads
-				if levelData[1][x][y] > 0 {
-					tiles[1][levelData[1][x][y]].Draw(doodadbatch, mat)
+				if levelData[1][x][y].tile > 0 {
+					tiles[1][levelData[1][x][y].tile].Draw(doodadbatch, mat)
 				}
 
 				// draw all actors (actor animations update every frame)

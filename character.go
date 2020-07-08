@@ -42,7 +42,7 @@ func step_forward(a *actor, path []*node) {
 	}
 }
 
-func characterStateMachine(characters []*character, levelData [2][32][32]uint) {
+func characterStateMachine(characters []*character, levelData [2][32][32]*node) {
 
 	for _, c := range characters {
 		c.actor.frame = (c.actor.frame + 1) % 10

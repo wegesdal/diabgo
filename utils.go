@@ -43,10 +43,10 @@ func isoSquare(centerXY pixel.Vec, size int, imd *imdraw.IMDraw) {
 	imd.Polygon(1)
 }
 
-func findOpenNode(levelData [2][32][32]uint) *node {
+func findOpenNode(levelData [2][32][32]*node) *node {
 	x := rand.Intn(31)
 	y := rand.Intn(31)
-	for levelData[0][x][y] != 1 {
+	for levelData[0][x][y].tile != 1 {
 		x = rand.Intn(31)
 		y = rand.Intn(31)
 	}

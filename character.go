@@ -153,7 +153,7 @@ func drawHealthPlates(characters []*character, imd *imdraw.IMDraw) {
 
 				if i*10 < c.hp && (i+1)*10 >= c.hp {
 
-					fractionOfBar := float64((c.hp % 10)) / 10.0
+					fractionOfBar := float64(((10 - c.hp) % 10)) / 10.0
 					imd.Push(pixel.Vec{X: start_X + float64(i)*bar_length + 1, Y: c.actor.coord.Y + verticalOffset})
 					f := fractionOfBar * bar_length
 					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f, Y: c.actor.coord.Y + verticalOffset})

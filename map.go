@@ -13,10 +13,10 @@ func wall_gen(x int, y int, levelData [2][32][32]*node) [2][32][32]*node {
 	for blocks > 0 {
 		levelData[0][x][y].tile = 4
 		if x < 30 && x > 0 && y < 30 && y > 0 {
-			r := rand.Intn(6)
-			if r < 2 {
+			d6 := rand.Intn(6)
+			if d6 < 2 {
 				x++
-			} else if r < 4 {
+			} else if d6 < 4 {
 				y++
 			}
 		}
@@ -59,6 +59,11 @@ func generateMap() ([2][32][32]*node, *node) {
 		for x := 0; x < 32; x++ {
 			for y := 0; y < 32; y++ {
 				levelData[z][x][y] = &node{x: x, y: y, tile: 0}
+				if levelData[0][x][y].tile < 4 {
+					levelData[0][x][y].walkable = true
+				} else {
+					levelData[0][x][y].walkable = false
+				}
 			}
 		}
 	}
@@ -94,7 +99,9 @@ func generateMap() ([2][32][32]*node, *node) {
 			levelData[0][node.x][node.y+2].tile = 3
 		} else {
 			levelData[0][node.x][node.y].tile = 5
+			levelData[0][node.x][node.y].walkable = false
 			levelData[0][node.x][node.y+1].tile = 5
+			levelData[0][node.x][node.y+1].walkable = false
 		}
 	}
 

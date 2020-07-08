@@ -9,13 +9,14 @@ func add(x int, y int) int {
 }
 
 type node struct {
-	x       int
-	y       int
-	parent  *node
-	H       int
-	G       int
-	tile    int
-	visible bool
+	x        int
+	y        int
+	parent   *node
+	H        int
+	G        int
+	tile     int
+	walkable bool
+	visible  bool
 }
 
 func manhattan_distance(a node, b node) int {
@@ -24,7 +25,7 @@ func manhattan_distance(a node, b node) int {
 
 func walkable(n node, grid [32][32]*node) bool {
 	if n.x >= 0 && n.y >= 0 && n.x < len(grid[0]) && n.y < len(grid) {
-		return grid[n.x][n.y].tile < 4
+		return grid[n.x][n.y].walkable
 	} else {
 		return false
 	}

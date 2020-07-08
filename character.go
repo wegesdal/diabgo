@@ -113,7 +113,9 @@ func characterStateMachine(characters []*character, levelData [2][32][32]*node) 
 			}
 
 		} else if c.actor.state == attack {
-			c.target.hp -= 1
+			if c.actor.frame == 9 {
+				c.target.hp -= 3
+			}
 
 			if c.target.hp < 1 {
 				c.actor.state = idle

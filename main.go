@@ -149,8 +149,11 @@ func run() {
 			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
 				if levelData[0][coordX][coordY].tile == 0 {
 					levelData[0][coordX][coordY].tile = 4
+					levelData[0][coordX][coordY].walkable = false
 				} else {
 					levelData[0][coordX][coordY].tile = 0
+					levelData[0][coordX][coordY].walkable = true
+
 				}
 
 			}
@@ -166,6 +169,7 @@ func run() {
 			if coordX < len(levelData[1]) && coordY < len(levelData[1]) && coordX >= 0 && coordY >= 0 {
 				if levelData[1][coordX][coordY].tile == 0 {
 					levelData[1][coordX][coordY].tile = 1
+
 				} else {
 					levelData[1][coordX][coordY].tile = 0
 				}

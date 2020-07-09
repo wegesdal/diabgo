@@ -43,7 +43,7 @@ func run() {
 		Bounds:                 pixel.R(0, 0, windowWidth, windowHeight),
 		VSync:                  true,
 		TransparentFramebuffer: false,
-		Undecorated:            true,
+		Undecorated:            false,
 	}
 
 	win, err = pixelgl.NewWindow(cfg)
@@ -116,10 +116,10 @@ func run() {
 		ticks += dt
 
 		for _, c := range characters {
-			c.actor.coord = pixel.Lerp(c.actor.coord, cartesianToIso(pixel.Vec{X: float64(c.actor.x), Y: float64(c.actor.y)}), dt*4.0)
+			c.actor.coord = pixel.Lerp(c.actor.coord, cartesianToIso(pixel.Vec{X: float64(c.actor.x), Y: float64(c.actor.y)}), dt*6.0)
 		}
 
-		if ticks > 0.05 {
+		if ticks > 0.03 {
 
 			// TODO: APPLY STATUS EFFECTS
 			// CHECK STATUS AND APPLY STATE
@@ -238,7 +238,7 @@ func run() {
 
 		input = handleTerminalInput(player, txt, input)
 
-		win.Clear(pixel.RGBA{R: 0, G: 0, B: 0, A: 0})
+		win.Clear(pixel.RGBA{R: 0.045, G: 0.05, B: 0.105, A: 1.0})
 
 		batch.Draw(win)
 		drawHealthPlates(characters, imd)

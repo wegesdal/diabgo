@@ -19,6 +19,8 @@ func clearVisibility(tiles [32][32]*node) {
 
 // adapted from https://www.albertford.com/shadowcasting/
 
+// TODO: visibility bug on x=0 side of level
+
 func compute_fov(origin vec, grid [32][32]*node) {
 	grid[origin.x][origin.y].visible = true
 	for i := 0; i < 4; i++ {
@@ -30,7 +32,7 @@ func compute_fov(origin vec, grid [32][32]*node) {
 
 func reveal(tile vec, grid [32][32]*node, quadrant *Quadrant) {
 	q := transform(quadrant, tile)
-	if q.x < 32 && q.x > 0 && q.y < 32 && q.y > 0 {
+	if in_bounds(q.x, q.y) {
 		grid[q.x][q.y].visible = true
 	}
 }
@@ -40,11 +42,21 @@ func is_wall(tile vec, grid [32][32]*node, quadrant *Quadrant) bool {
 	if (vec{}) != tile {
 		w = false
 		q := transform(quadrant, tile)
-		if q.x < 32 && q.y < 32 && q.x > 0 && q.y > 0 {
+		if in_bounds(q.x, q.y) {
 			w = !grid[q.x][q.y].walkable
+		} else {
+			w = true
 		}
 	}
 	return w
+}
+
+func in_bounds(x int, y int) bool {
+	if x < 32 && y < 32 && x >= 0 && y >= 0 {
+		return true
+	} else {
+		return false
+	}
 }
 
 func is_floor(tile vec, grid [32][32]*node, quadrant *Quadrant) bool {
@@ -52,7 +64,7 @@ func is_floor(tile vec, grid [32][32]*node, quadrant *Quadrant) bool {
 	if (vec{}) != tile {
 		f = false
 		q := transform(quadrant, tile)
-		if q.x < 32 && q.y < 32 && q.x > 0 && q.y > 0 {
+		if in_bounds(q.x, q.y) {
 			f = grid[q.x][q.y].walkable
 		}
 	}

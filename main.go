@@ -284,7 +284,7 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 		for x := Min(player.x+vision, len(levelData[0])-1); x >= Max(player.x-vision, 0); x-- {
 			for y := Min(player.y+vision, len(levelData[0])-1); y >= Max(player.y-vision, 0); y-- {
 
-				isoCoords := cartesianToIso(pixel.V(float64(x), float64(y)))
+				isoCoords := cartesianToIso(pixel.Vec{X: float64(x), Y: float64(y)})
 				mat := pixel.IM.Moved(isoCoords)
 
 				if levelData[0][x][y].visible {

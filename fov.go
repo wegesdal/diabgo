@@ -4,6 +4,19 @@ import (
 	"math"
 )
 
+type vec struct {
+	x int
+	y int
+}
+
+func clearVisibility(tiles [32][32]*node) {
+	for row, _ := range tiles {
+		for col, _ := range tiles[0] {
+			tiles[row][col].visible = false
+		}
+	}
+}
+
 // adapted from https://www.albertford.com/shadowcasting/
 
 func compute_fov(origin vec, grid [32][32]*node) {

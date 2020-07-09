@@ -42,7 +42,7 @@ func run() {
 		Title:                  "Diabgo",
 		Bounds:                 pixel.R(0, 0, windowWidth, windowHeight),
 		VSync:                  true,
-		TransparentFramebuffer: true,
+		TransparentFramebuffer: false,
 		Undecorated:            true,
 	}
 
@@ -106,7 +106,7 @@ func run() {
 	actors = append(actors, act)
 	characters = append(characters, player)
 	actors = append(actors, spawn_actor(10, 10, "terminal", terminal_anim))
-	refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
+	//	refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
 
 	for !win.Closed() {
 
@@ -134,7 +134,9 @@ func run() {
 			ticks = 0
 		}
 
-		refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
+		clearVisibility(levelData[0])
+		compute_fov(vec{x: player.actor.x, y: player.actor.y}, levelData[0])
+		// refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
 
 		batchUpdate(batch, animbatch, doodadbatch, widgetbatch, txt, actors, dt, levelData, tiles, imd)
 
@@ -278,7 +280,7 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 
 	if player != nil {
 
-		vision := 32
+		vision := 16
 		for x := Min(player.x+vision, len(levelData[0])-1); x >= Max(player.x-vision, 0); x-- {
 			for y := Min(player.y+vision, len(levelData[0])-1); y >= Max(player.y-vision, 0); y-- {
 

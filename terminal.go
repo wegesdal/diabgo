@@ -76,7 +76,7 @@ func handleTerminalInput(player *character, txt *text.Text, input string) string
 func renderTerminalText(player *character, txt *text.Text, input string) string {
 
 	if player.actor.state == activate {
-		txt.Draw(win, pixel.IM.Moved(pixel.Vec{X: player.actor.coord.X + 22.0, Y: player.actor.coord.Y + 90.0}.Sub(txt.Bounds().Min)))
+		txt.Draw(win, pixel.IM.Moved(pixel.Vec{X: player.actor.coord.X + 23.0, Y: player.actor.coord.Y + 90.0}.Sub(txt.Bounds().Min)))
 	} else {
 		input = ""
 		txt.Clear()

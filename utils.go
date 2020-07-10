@@ -36,6 +36,8 @@ func Min(x, y int) int {
 func isoSquare(centerXY pixel.Vec, size int, imd *imdraw.IMDraw) {
 	imd.Color = pixel.RGBA{R: 1.0, G: 0.6, B: 0, A: 1.0}
 	hs := float64(size / 2)
+	y_offset := 4.0
+	centerXY = pixel.Vec.Add(centerXY, pixel.Vec{X: 0, Y: y_offset})
 	imd.Push(pixel.Vec.Add(centerXY, cartesianToIso(pixel.Vec{X: -hs, Y: -hs})))
 	imd.Push(pixel.Vec.Add(centerXY, cartesianToIso(pixel.Vec{X: -hs, Y: hs})))
 	imd.Push(pixel.Vec.Add(centerXY, cartesianToIso(pixel.Vec{X: hs, Y: hs})))

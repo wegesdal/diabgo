@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"math"
 
 	"github.com/faiface/pixel"
@@ -17,6 +18,11 @@ type character struct {
 	arange float64
 	target *character
 }
+
+const (
+	light = iota
+	dark
+)
 
 func spawn_character(a *actor) *character {
 
@@ -45,7 +51,11 @@ func step_forward(a *actor, path []*node) {
 func characterStateMachine(characters []*character, levelData [2][32][32]*node) {
 
 	for _, c := range characters {
+
+		// advance the animation frame
 		c.actor.frame = (c.actor.frame + 1) % 10
+
+		// auto targeting for non-players
 		for _, o := range characters {
 
 			// _, ocharmed := o.actor.effects["charmed"]
@@ -63,49 +73,51 @@ func characterStateMachine(characters []*character, levelData [2][32][32]*node) 
 			// if they are opposed the product of their states is negative
 
 			if c != o && c.actor.state != dead && o.actor.state != dead {
-
-				d := pixel.Vec.Sub(c.actor.coord, o.actor.coord)
-				d_square := d.X*d.X + d.Y*d.Y
-
-				if d_square < c.prange && o.actor.faction*c.actor.faction < 0 {
-					c.target = o
+				// let the player target manually
+				if c.actor.name != "player" {
+					d := pixel.Vec.Sub(c.actor.coord, o.actor.coord)
+					d_square := d.X*d.X + d.Y*d.Y
+					if (d_square < c.prange || d_square < c.arange) && o.actor.faction*c.actor.faction < 0 {
+						c.target = o
+						break
+					}
 				}
 			}
 		}
 	}
 
 	for _, c := range characters {
+		d := pixel.Vec.Sub(c.target.actor.coord, c.actor.coord)
+		d_square := d.X*d.X + d.Y*d.Y
 
 		if c.actor.state == idle {
 
+			// if actor has not reached destination, walk
 			if c.dest.x != c.actor.x || c.dest.y != c.actor.y || c.target != c {
 				c.actor.state = walk
 			}
 
 		} else if c.actor.state == walk {
 
+			// if actor has reached destination, idle
 			if c.dest.x == c.actor.x && c.dest.y == c.actor.y {
 				c.actor.state = idle
 			}
+
 			if c.target != c {
 				// if in range, attack
-				d := pixel.Vec.Sub(c.target.actor.coord, c.actor.coord)
-				d_square := d.X*d.X + d.Y*d.Y
-
 				if d_square < c.arange {
 					c.actor.state = attack
-
 					c.actor.direction = wayfind(c.actor.x, c.actor.y, c.target.actor.x, c.target.actor.y)
-				}
-
-				// otherwise move towards target
-				path := Astar(&node{x: c.actor.x, y: c.actor.y}, &node{x: c.target.actor.x, y: c.target.actor.y}, levelData[0])
-				if len(path) > 0 {
-					if path[len(path)-1].x != c.target.actor.x || path[len(path)-1].y != c.target.actor.y {
-						step_forward(c.actor, path)
+				} else {
+					// otherwise move towards target unless player (let the player control their movement)
+					path := Astar(&node{x: c.actor.x, y: c.actor.y}, &node{x: c.target.actor.x, y: c.target.actor.y}, levelData[0])
+					if len(path) > 0 {
+						if path[len(path)-1].x != c.target.actor.x || path[len(path)-1].y != c.target.actor.y {
+							step_forward(c.actor, path)
+						}
 					}
 				}
-
 				// if no target
 			} else {
 				path := Astar(&node{x: c.actor.x, y: c.actor.y}, c.dest, levelData[0])
@@ -113,8 +125,12 @@ func characterStateMachine(characters []*character, levelData [2][32][32]*node) 
 			}
 
 		} else if c.actor.state == attack {
-			if c.actor.frame == 9 {
-				c.target.hp -= 3
+			if d_square < c.arange {
+				if c.actor.frame == 9 {
+					c.target.hp -= 3
+				}
+			} else {
+				c.actor.state = idle
 			}
 
 			if c.target.hp < 1 {
@@ -140,13 +156,7 @@ func drawHealthPlates(characters []*character, imd *imdraw.IMDraw) {
 		start_X := c.actor.coord.X - z
 
 		//percentageHealth := float64(a.hp) / float64(a.maxhp)
-		if c.actor.faction == friendly {
-			imd.Color = colornames.Lightgreen
-		} else if c.actor.faction == neutral {
-			imd.Color = colornames.Lightyellow
-		} else if c.actor.faction == hostile {
-			imd.Color = colornames.Red
-		}
+		imd.Color = factionColor(c.actor.faction, light)
 		if c.hp > 0 {
 			for i := 0; i < bars; i++ {
 				verticalOffset := 192.0
@@ -158,13 +168,7 @@ func drawHealthPlates(characters []*character, imd *imdraw.IMDraw) {
 					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f*bar_length, Y: c.actor.coord.Y + verticalOffset})
 
 					imd.Line(3)
-					if c.actor.faction == friendly {
-						imd.Color = colornames.Darkgreen
-					} else if c.actor.faction == neutral {
-						imd.Color = colornames.Darkgoldenrod
-					} else if c.actor.faction == hostile {
-						imd.Color = colornames.Darkred
-					}
+					imd.Color = factionColor(c.actor.faction, dark)
 					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - f*bar_length, Y: c.actor.coord.Y + verticalOffset})
 					imd.Push(pixel.Vec{X: start_X + float64(i+1)*bar_length - 1, Y: c.actor.coord.Y + verticalOffset})
 					imd.Line(3)
@@ -216,4 +220,26 @@ func removeDeadCharacters(actors []*actor, characters []*character) ([]*actor, [
 		}
 	}
 	return actors, characters
+}
+
+func factionColor(faction int, variant int) color.RGBA {
+	var color color.RGBA
+	if variant == light {
+		if faction == friendly {
+			color = colornames.Lightgreen
+		} else if faction == neutral {
+			color = colornames.Lightyellow
+		} else if faction == hostile {
+			color = colornames.Red
+		}
+	} else if variant == dark {
+		if faction == friendly {
+			color = colornames.Darkgreen
+		} else if faction == neutral {
+			color = colornames.Darkgoldenrod
+		} else if faction == hostile {
+			color = colornames.Darkred
+		}
+	}
+	return color
 }

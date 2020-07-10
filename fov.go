@@ -19,8 +19,6 @@ func clearVisibility(tiles [32][32]*node) {
 
 // adapted from https://www.albertford.com/shadowcasting/
 
-// TODO: visibility bug on x=0 side of level
-
 func compute_fov(origin vec, grid [32][32]*node) {
 	grid[origin.x][origin.y].visible = true
 	for i := 0; i < 4; i++ {

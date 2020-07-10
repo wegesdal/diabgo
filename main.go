@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 
@@ -34,9 +35,10 @@ var (
 
 func run() {
 
-	var err error
+	//https://www.youtube.com/watch?v=Fs13eG36VR8
+	//https://opengameart.org/content/60-terrible-character-portraits
 
-	levelData, endOfTheRoad := generateMap()
+	var err error
 
 	cfg := pixelgl.WindowConfig{
 		Title:                  "Diabgo",
@@ -56,7 +58,7 @@ func run() {
 	if err != nil {
 		panic(err)
 	}
-	psheet, err := loadPicture("hacker.png")
+	psheet, err := loadPicture("hacker8.png")
 	if err != nil {
 		panic(err)
 	}
@@ -76,31 +78,33 @@ func run() {
 	// inventory
 
 	// load player sprites
+
 	var (
-		batch         = pixel.NewBatch(&pixel.TrianglesData{}, pic)
-		animbatch     = pixel.NewBatch(&pixel.TrianglesData{}, psheet)
-		doodadbatch   = pixel.NewBatch(&pixel.TrianglesData{}, pic)
-		widgetbatch   = pixel.NewBatch(&pixel.TrianglesData{}, tsheet)
-		tiles         = generateTiles(pic)
-		player_anim   = generateActorSprites(psheet, 5, 256)
-		player_spawn  = findOpenNode(levelData)
-		act           = spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim)
-		player        = spawn_character(act)
-		creep_anim    = generateActorSprites(psheet, 5, 256)
-		frames        = 0
-		ticks         = 0.0
-		second        = time.Tick(time.Second)
-		terminal_anim = generateActorSprites(tsheet, 1, 128)
-		text_atlas    = text.NewAtlas(basicfont.Face7x13, text.ASCII)
-		txt           = text.New(pixel.V(0, 0), text_atlas)
-		input         = ""
-		last          = time.Now()
+		levelData, endOfTheRoad = generateMap()
+		batch                   = pixel.NewBatch(&pixel.TrianglesData{}, pic)
+		animbatch               = pixel.NewBatch(&pixel.TrianglesData{}, psheet)
+		doodadbatch             = pixel.NewBatch(&pixel.TrianglesData{}, pic)
+		widgetbatch             = pixel.NewBatch(&pixel.TrianglesData{}, tsheet)
+		tiles                   = generateTiles(pic)
+		player_anim             = generateCharacterSprites(psheet, 256)
+		player_spawn            = findOpenNode(levelData)
+		act                     = spawn_actor(player_spawn.x, player_spawn.y, "player", player_anim)
+		player                  = spawn_character(act)
+		creep_anim              = generateCharacterSprites(psheet, 256)
+		frames                  = 0
+		ticks                   = 0.0
+		second                  = time.Tick(time.Second)
+		terminal_anim           = generateActorSprites(tsheet, 1, 128)
+		text_atlas              = text.NewAtlas(basicfont.Face7x13, text.ASCII)
+		term_txt                = text.New(pixel.V(0, 0), text_atlas)
+		input                   = ""
+		last                    = time.Now()
 	)
 
 	player.maxhp = 40
 	player.hp = 40
 	player.actor.faction = friendly
-	player.prange = 8000.0
+	player.prange = 0.0
 	player.arange = 2000.0
 
 	actors = append(actors, act)
@@ -120,17 +124,9 @@ func run() {
 		}
 
 		if ticks > 0.03 {
-
-			// TODO: APPLY STATUS EFFECTS
-			// CHECK STATUS AND APPLY STATE
-
 			characterStateMachine(characters, levelData)
 			terminalStateMachine(actors)
-
-			// REMOVE DEAD CHARACTERS AND ADVANCE FRAME
-
 			actors, characters = removeDeadCharacters(actors, characters)
-
 			ticks = 0
 		}
 
@@ -138,10 +134,9 @@ func run() {
 		compute_fov(vec{x: player.actor.x, y: player.actor.y}, levelData[0])
 		// refreshVisibility(levelData[0], &node{x: player.actor.x, y: player.actor.y})
 
-		batchUpdate(batch, animbatch, doodadbatch, widgetbatch, txt, actors, dt, levelData, tiles, imd)
+		batchUpdate(batch, animbatch, doodadbatch, widgetbatch, term_txt, characters, dt, levelData, tiles, imd)
 
 		last = time.Now()
-
 		cam := pixel.IM.Scaled(camPos, camZoom).Moved(win.Bounds().Center().Sub(camPos))
 		win.SetMatrix(cam)
 
@@ -197,25 +192,35 @@ func run() {
 			characters = append(characters, c)
 		}
 
-		if win.JustPressed(pixelgl.Key4) {
-			for _, c := range characters {
-				diff := pixel.Vec.Sub(c.actor.coord, cam.Unproject(win.MousePosition()))
-				clickRadius := 300.0
-				if diff.X*diff.X+diff.Y*diff.Y < clickRadius {
-					c.actor.effects["charmed"] = struct{}{}
-					break
-				}
-			}
-		}
+		// if win.JustPressed(pixelgl.Key4) {
+		// 	for _, c := range characters {
+		// 		diff := pixel.Vec.Sub(c.actor.coord, cam.Unproject(win.MousePosition()))
+		// 		clickRadius := 300.0
+		// 		if diff.X*diff.X+diff.Y*diff.Y < clickRadius {
+		// 			c.actor.effects["charmed"] = struct{}{}
+		// 			break
+		// 		}
+		// 	}
+		// }
 
 		if win.Pressed(pixelgl.MouseButtonLeft) {
 			player.actor.state = walk
+			player.target = player
 			var (
 				raw    = isoToCartesian(cam.Unproject(win.MousePosition()))
 				coordX = int(raw.X + 1)
 				coordY = int(raw.Y + 1)
 			)
 
+			for _, c := range characters {
+				// offset y so targeting box is above model
+				y_offset := 80.0
+				diff := pixel.Vec.Add(pixel.Vec.Sub(c.actor.coord, cam.Unproject(win.MousePosition())), pixel.Vec{X: 0, Y: y_offset})
+				if math.Abs(diff.X) < 50 && math.Abs(diff.Y) < 100 && c != player {
+					player.target = c
+					break
+				}
+			}
 			if coordX < len(levelData[0]) && coordY < len(levelData[0]) && coordX >= 0 && coordY >= 0 {
 				player.dest = &node{x: coordX, y: coordY}
 			}
@@ -223,20 +228,20 @@ func run() {
 
 		camPos = pixel.Lerp(camPos, player.actor.coord, dt)
 
-		for i := 0; i < len(characters); i++ {
-			_, charmed := characters[i].actor.effects["charmed"]
-			if charmed {
-				// if actor.effects
-				imd.Color = pixel.RGBA{R: 1, G: 0, B: 0.5, A: 0.5}
-				imd.EndShape = imdraw.SharpEndShape
-				imd.Push(player.actor.coord, characters[i].actor.coord)
-				imd.Line(1)
-			}
-		}
+		// for i := 0; i < len(characters); i++ {
+		// 	_, charmed := characters[i].actor.effects["charmed"]
+		// 	if charmed {
+		// 		// if actor.effects
+		// 		imd.Color = pixel.RGBA{R: 1, G: 0, B: 0.5, A: 0.5}
+		// 		imd.EndShape = imdraw.SharpEndShape
+		// 		imd.Push(player.actor.coord, characters[i].actor.coord)
+		// 		imd.Line(1)
+		// 	}
+		// }
 
 		// CONFIGURE TERMINAL
 
-		input = handleTerminalInput(player, txt, input)
+		input = handleTerminalInput(player, term_txt, input)
 
 		win.Clear(pixel.RGBA{R: 0.045, G: 0.05, B: 0.105, A: 1.0})
 
@@ -247,7 +252,7 @@ func run() {
 		animbatch.Draw(win)
 		doodadbatch.Draw(win)
 
-		input = renderTerminalText(player, txt, input)
+		input = renderTerminalText(player, term_txt, input)
 
 		win.Update()
 
@@ -262,7 +267,7 @@ func run() {
 	}
 }
 
-func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.Batch, widgetbatch *pixel.Batch, txt *text.Text, actors []*actor, dt float64, levelData [2][32][32]*node, tiles [2][]*pixel.Sprite, imd *imdraw.IMDraw) {
+func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.Batch, widgetbatch *pixel.Batch, term_txt *text.Text, characters []*character, dt float64, levelData [2][32][32]*node, tiles [2][]*pixel.Sprite, imd *imdraw.IMDraw) {
 
 	batch.Clear()
 	widgetbatch.Clear()
@@ -270,10 +275,10 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 	doodadbatch.Clear()
 
 	// only draw tiles close to player
-	var player *actor
-	for _, a := range actors {
-		if a.name == "player" {
-			player = a
+	var player *character
+	for _, c := range characters {
+		if c.actor.name == "player" {
+			player = c
 			break
 		}
 	}
@@ -281,8 +286,8 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 	if player != nil {
 
 		vision := 16
-		for x := Min(player.x+vision, len(levelData[0])-1); x >= Max(player.x-vision, 0); x-- {
-			for y := Min(player.y+vision, len(levelData[0])-1); y >= Max(player.y-vision, 0); y-- {
+		for x := Min(player.actor.x+vision, len(levelData[0])-1); x >= Max(player.actor.x-vision, 0); x-- {
+			for y := Min(player.actor.y+vision, len(levelData[0])-1); y >= Max(player.actor.y-vision, 0); y-- {
 
 				isoCoords := cartesianToIso(pixel.Vec{X: float64(x), Y: float64(y)})
 				mat := pixel.IM.Moved(isoCoords)
@@ -311,12 +316,14 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 							// widgets will have an anims length of 1
 							startingFrame = a.direction * 10
 
-							if len(a.anims) == 5 {
+							if len(a.anims) == 6 {
 								pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 0, Y: 60}))
 								// adjusting Y to account for tall player model
 								a.anims[a.state][(a.frame+startingFrame)].Draw(animbatch, pmat)
-							} else {
 
+								targetRect(player.target.actor.coord, imd, player.target.actor.faction)
+
+							} else {
 								// DRAW WIDGETS
 								pmat = pmat.Moved(pixel.Vec.Add(a.coord, pixel.Vec{X: 25, Y: 80}))
 								a.anims[4][(a.frame+startingFrame)].Draw(widgetbatch, pmat)
@@ -329,6 +336,20 @@ func batchUpdate(batch *pixel.Batch, animbatch *pixel.Batch, doodadbatch *pixel.
 			}
 		}
 	}
+}
+
+func targetRect(coord pixel.Vec, imd *imdraw.IMDraw, faction int) {
+	// imd.Color = pixel.RGBA{R: 1.0, G: 0.6, B: 0, A: 0.5}
+	height := 200.0
+	y_offset := 80.0
+	width := 100.0
+
+	imd.Color = factionColor(faction, light)
+	imd.Push(pixel.Vec.Add(coord, pixel.Vec{X: -width / 2, Y: y_offset - height/2}))
+	imd.Push(pixel.Vec.Add(coord, pixel.Vec{X: -width / 2, Y: y_offset + height/2}))
+	imd.Push(pixel.Vec.Add(coord, pixel.Vec{X: width / 2, Y: y_offset + height/2}))
+	imd.Push(pixel.Vec.Add(coord, pixel.Vec{X: width / 2, Y: y_offset - height/2}))
+	imd.Polygon(1)
 }
 
 func main() {

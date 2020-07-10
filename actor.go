@@ -12,11 +12,12 @@ const (
 )
 
 const (
-	dead = iota
-	idle
-	attack
+	activate = iota
+	dead
+	cast
 	walk
-	activate
+	attack
+	idle
 )
 
 const (
@@ -71,16 +72,44 @@ func generateActorSprites(p pixel.Picture, num_rows int, size int) map[int][]*pi
 	return anim
 }
 
+func generateCharacterSprites(p pixel.Picture, size int) map[int][]*pixel.Sprite {
+	anim := make(map[int][]*pixel.Sprite)
+	num_poses := 6
+	num_angles := 8
+	num_frames := 10
+	for i := 0; i < num_poses; i++ {
+		for a := 0; a < num_angles; a++ {
+			for f := 0; f < num_frames; f++ {
+				y_offset := i*size*4 + (a/2)*size
+				x_offset := (a%2)*num_frames*size + f*size
+				anim[i] = append(anim[i], pixel.NewSprite(p, pixel.R(float64(x_offset), float64(y_offset), float64(x_offset+size), float64(y_offset+size))))
+			}
+		}
+	}
+	return anim
+}
+
 func wayfind(x1 int, y1 int, x2 int, y2 int) int {
 	d := 0
-	if x1-x2 == 1 {
+	xy_diff := vec{x: x1 - x2, y: y1 - y2}
+
+	switch {
+	case xy_diff.x == 1 && xy_diff.y == 0:
+		d = 4
+	case xy_diff.x == -1 && xy_diff.y == 0:
 		d = 0
-	} else if x1-x2 == -1 {
+	case xy_diff.x == 0 && xy_diff.y == 1:
+		d = 6
+	case xy_diff.x == 0 && xy_diff.y == -1:
 		d = 2
-	} else if y1-y2 == 1 {
-		d = 3
-	} else if y1-y2 == -1 {
+	case xy_diff.x == 1 && xy_diff.y == 1:
+		d = 7
+	case xy_diff.x == -1 && xy_diff.y == 1:
 		d = 1
+	case xy_diff.x == 1 && xy_diff.y == -1:
+		d = 5
+	case xy_diff.x == -1 && xy_diff.y == -1:
+		d = 3
 	}
 	return d
 }

@@ -90,6 +90,8 @@ func generateMap() ([2][32][32]*node, *node) {
 	for _, node := range road {
 		levelData[0][node.x][node.y].tile = 1
 		levelData[0][node.x+1][node.y].tile = 1
+		levelData[0][node.x][node.y].walkable = true
+		levelData[0][node.x+1][node.y].walkable = true
 	}
 	// bake the river onto the array
 	river = append(river, river_start)

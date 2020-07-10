@@ -19,8 +19,13 @@ type node struct {
 	visible  bool
 }
 
+// manhattan distance is for 4-way movement calculations
 func manhattan_distance(a node, b node) int {
 	return int(math.Abs(float64(a.x-b.x)) + math.Abs(float64(a.y-b.y)))
+}
+
+func diagonal_distance(a node, b node) int {
+	return Max((a.x-b.x)*(a.x-b.x), (a.y-b.y)*(a.y-b.y))
 }
 
 func walkable(n node, grid [32][32]*node) bool {
@@ -88,6 +93,10 @@ func Astar(start *node, end *node, grid [32][32]*node) []*node {
 			&node{x: open[c].x - 1, y: open[c].y},
 			&node{x: open[c].x, y: open[c].y + 1},
 			&node{x: open[c].x, y: open[c].y - 1},
+			&node{x: open[c].x + 1, y: open[c].y + 1},
+			&node{x: open[c].x - 1, y: open[c].y - 1},
+			&node{x: open[c].x + 1, y: open[c].y - 1},
+			&node{x: open[c].x - 1, y: open[c].y + 1},
 		}
 
 		closed = append(closed, open[c])
@@ -103,7 +112,7 @@ func Astar(start *node, end *node, grid [32][32]*node) []*node {
 					}
 				} else {
 					n.G = closed[len(closed)-1].G + 1
-					n.H = manhattan_distance(*n, *end)
+					n.H = diagonal_distance(*n, *end)
 					n.parent = closed[len(closed)-1]
 					open = append(open, n)
 				}
